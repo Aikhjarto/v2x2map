@@ -43,8 +43,9 @@ Android Auto hides apps that weren't installed from the Play Store until you all
 3. On the car screen, open V2X2MAP. The card at the top shows the live V2X status
    (`V2X live · 120/min · 14 vehicles · 2 signals · 0 hazards`).
 4. **Search** → type a destination (Android Auto only allows typing while parked) or pick a recent
-   one. Voice "navigate to …" requests that Android Auto hands to this app (`geo:` intents) are
-   handled too, but Assistant usually sends them to your default navigation app.
+   one. **By voice:** with V2X2MAP open, press the microphone and say "Navigate to …". The
+   Assistant hands the request to V2X2MAP (tested with Gemini on Android Auto 18). If another
+   navigation app is open, the request goes there instead.
 5. During guidance: **Exit** stops navigation, **Avoid** (shown when a hazard is on your route)
    reroutes around it, and the speaker icon mutes voice guidance.
 

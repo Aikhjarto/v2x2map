@@ -324,18 +324,22 @@ class NavController(
 
     fun handleIntent(intent: Intent) {
         if (intent.action != CarContext.ACTION_NAVIGATE) return
-        val uri = intent.data ?: return
-        // geo:lat,lon  or  geo:0,0?q=address
-        val ssp = uri.schemeSpecificPart ?: return
-        val coords = ssp.substringBefore('?').split(',')
-        val lat = coords.getOrNull(0)?.toDoubleOrNull(); val lon = coords.getOrNull(1)?.toDoubleOrNull()
-        val q = uri.getQueryParameter("q")
-        if (lat != null && lon != null && (lat != 0.0 || lon != 0.0)) {
-            navigateTo(Place(q ?: "$lat, $lon", "", LatLon(lat, lon)))
-        } else if (!q.isNullOrBlank()) {
-            search(q) { results -> results.firstOrNull()?.let { navigateTo(it) } ?: toast("“$q”?") }
+        // geo:lat,lon  or  geo:0,0?q=address. geo: URIs are opaque, so Uri.getQueryParameter()
+        // throws — parse the string instead.
+        val uri = intent.dataString ?: return
+        when (val r = ShareParser.parseGeo(uri, null)) {
+            is ShareParser.Result.Coords ->
+                navigateWhenReady(Place(r.name ?: "%.5f, %.5f".format(Locale.ROOT, r.pos.lat, r.pos.lon), "", r.pos))
+            is ShareParser.Result.Query -> {
+                val q = r.candidates.first()
+                search(q) { results -> results.firstOrNull()?.let { navigateWhenReady(it) } ?: toast("“$q”?") }
+            }
+            else -> {}
         }
     }
+
+    /** Starts guidance now, or after the first GPS fix if there is none yet (e.g. right after launch). */
+    private fun navigateWhenReady(p: Place) { if (pos != null) navigateTo(p) else sharedDest = p }
 
     // ---- destination shared on the phone ("Navigate with V2X2MAP") ------------------------
 
