@@ -1,0 +1,100 @@
+package org.opentrafficmap.receiver.nav
+
+import kotlin.math.abs
+
+enum class SignalPhase { RED, YELLOW, GREEN, UNKNOWN }
+
+data class V2xVehicle(
+    val id: Long, val pos: LatLon, val headingDeg: Double?, val speedMps: Double?,
+    val stationType: Int?, val lastSeenMs: Long,
+) {
+    /** ETSI StationType 10 = specialVehicles (police, ambulance, fire). */
+    val isEmergency: Boolean get() = stationType == 10
+}
+
+data class V2xHazard(
+    val key: String,                // originStation:sequence (ActionID)
+    val pos: LatLon,
+    val causeCode: Int?, val subCauseCode: Int?,
+    val label: String,
+    val lastSeenMs: Long,
+    val expiresMs: Long,
+    val simulated: Boolean = false,
+) {
+    val isEmergencyApproach: Boolean get() = causeCode == 95
+}
+
+data class V2xSignal(
+    val id: Long, val pos: LatLon, val phase: SignalPhase, val lastSeenMs: Long,
+    val simulated: Boolean = false,
+)
+
+data class V2xSnapshot(
+    val vehicles: List<V2xVehicle>,
+    val hazards: List<V2xHazard>,
+    val signals: List<V2xSignal>,
+    val lastFrameMs: Long,
+    val framesLastMinute: Int,
+) {
+    companion object { val EMPTY = V2xSnapshot(emptyList(), emptyList(), emptyList(), 0, 0) }
+}
+
+data class HazardAhead(val hazard: V2xHazard, val distM: Double)
+data class SignalAhead(val signal: V2xSignal, val distM: Double)
+
+data class V2xAhead(
+    val signal: SignalAhead?,
+    val hazards: List<HazardAhead>,
+    val emergencyNearby: V2xVehicle?,
+)
+
+/**
+ * Decides which V2X objects matter to the driver right now. When a route is active
+ * the objects are matched against the route ahead; otherwise a cone in front of the
+ * car (driving direction) is used.
+ */
+object V2xAnalyzer {
+    const val HAZARD_LOOKAHEAD_M = 5_000.0
+    const val HAZARD_LATERAL_M = 60.0
+    const val SIGNAL_LOOKAHEAD_M = 450.0
+    const val SIGNAL_LATERAL_M = 60.0
+    const val EMERGENCY_RADIUS_M = 600.0
+
+    fun analyze(
+        snap: V2xSnapshot,
+        pos: LatLon,
+        bearing: Double?,
+        engine: NavigationEngine?,
+    ): V2xAhead {
+        val hazards = snap.hazards.mapNotNull { h ->
+            val d = if (engine != null) engine.aheadOnRoute(h.pos, HAZARD_LATERAL_M, HAZARD_LOOKAHEAD_M)?.first
+                    else inCone(pos, bearing, h.pos, 2_000.0, 40.0)
+            d?.let { HazardAhead(h, it) }
+        }.sortedBy { it.distM }
+
+        val signal = snap.signals.mapNotNull { s ->
+            val d = if (engine != null) engine.aheadOnRoute(s.pos, SIGNAL_LATERAL_M, SIGNAL_LOOKAHEAD_M)?.first
+                    else inCone(pos, bearing, s.pos, 400.0, 70.0) ?: run {
+                        // no heading yet (standing still): nearest within 250 m
+                        if (bearing == null) Geo.distance(pos, s.pos).takeIf { it < 250 } else null
+                    }
+            d?.let { SignalAhead(s, it) }
+        }.minByOrNull { it.distM }
+
+        val emergency = snap.vehicles.filter { it.isEmergency }
+            .map { it to Geo.distance(pos, it.pos) }
+            .filter { it.second < EMERGENCY_RADIUS_M }
+            .minByOrNull { it.second }?.first
+
+        return V2xAhead(signal, hazards, emergency)
+    }
+
+    /** Distance to [p] if it lies within ±[halfAngle]° of [bearing] and [maxDist]; null otherwise. */
+    private fun inCone(pos: LatLon, bearing: Double?, p: LatLon, maxDist: Double, halfAngle: Double): Double? {
+        val d = Geo.distance(pos, p)
+        if (d > maxDist) return null
+        if (bearing == null) return null
+        if (d < 15) return d
+        return if (abs(Geo.angleDiff(Geo.bearing(pos, p), bearing)) <= halfAngle) d else null
+    }
+}

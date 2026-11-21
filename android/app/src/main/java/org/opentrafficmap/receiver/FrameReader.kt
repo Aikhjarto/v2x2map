@@ -70,6 +70,7 @@ class FrameReader {
                 speedMps    = d.speedMps,
                 spatPhase   = d.spatPhase,
                 denmCause   = d.denmCause,
+                denmEvent   = d.denmEvent,
                 secured     = d.secured,
             )
         }

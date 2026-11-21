@@ -92,6 +92,11 @@ dependencies {
     // Google Play Services Location for the "centre on me" button
     implementation("com.google.android.gms:play-services-location:21.0.1")
 
+    // Android Auto (Car App Library) — navigation template + surface map
+    implementation("androidx.car.app:app:1.4.0")
+
+    testImplementation("junit:junit:4.13.2")
+
     // MQTT (Paho Java client, async I/O runs on its own thread)
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
 }

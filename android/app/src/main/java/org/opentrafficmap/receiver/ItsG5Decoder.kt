@@ -156,8 +156,9 @@ object ItsG5Decoder {
             val msgType = MsgType.fromBtpPort(dstPort)
             val spatPhase  = if (msgType == MsgType.SPATEM)
                 SpatTemParser.extractPhase(p, btpOff) else null
-            val denmCause  = if (msgType == MsgType.DENM)
-                DenmParser.extractCause(p, btpOff) else null
+            val denmEvent  = if (msgType == MsgType.DENM)
+                DenmParser.extractEvent(p, btpOff) else null
+            val denmCause  = denmEvent?.cause
 
             return Decoded(
                 etherType   = et,
@@ -170,6 +171,7 @@ object ItsG5Decoder {
                 btpDstPort  = dstPort,
                 spatPhase   = spatPhase,
                 denmCause   = denmCause,
+                denmEvent   = denmEvent,
                 secured     = secured,
             )
         }
@@ -235,6 +237,7 @@ object ItsG5Decoder {
         val btpDstPort:  Int? = null,
         val spatPhase:   SpatTemParser.Phase? = null,
         val denmCause:   DenmParser.Cause? = null,
+        val denmEvent:   DenmParser.Event? = null,
         val secured:     Boolean? = null,  // GN Basic Header NH == 2 → IEEE 1609.2
     )
 

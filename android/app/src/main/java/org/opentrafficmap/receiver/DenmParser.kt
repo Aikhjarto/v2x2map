@@ -12,6 +12,17 @@ package org.opentrafficmap.receiver
  */
 object DenmParser {
 
+    /** Full event info used by the navigation layer (V2xHub). */
+    data class Event(
+        val cause: Cause?,
+        val originStationId: Long,
+        val sequenceNumber: Int,
+        val lat: Double?,          // eventPosition (not the sender position)
+        val lon: Double?,
+        val validitySec: Int,      // DEFAULT 600
+        val terminated: Boolean,   // isCancellation / isNegation
+    )
+
     data class Cause(val causeCode: Int, val subCauseCode: Int) {
         fun label(): String = CAUSE_LABELS[causeCode] ?: "Code $causeCode"
         fun sublabel(): String = when (causeCode) {
@@ -28,19 +39,21 @@ object DenmParser {
      * @param p      full 802.11 frame payload
      * @param btpOff byte offset of the 4-byte BTP-B header within [p]
      */
-    fun extractCause(p: ByteArray, btpOff: Int): Cause? {
+    fun extractCause(p: ByteArray, btpOff: Int): Cause? = extractEvent(p, btpOff)?.cause
+
+    fun extractEvent(p: ByteArray, btpOff: Int): Event? {
         val itsStart = btpOff + 4
         if (itsStart + 6 > p.size) return null
         if ((p[itsStart].toInt() and 0xFF) != 2) return null   // protocolVersion
         if ((p[itsStart + 1].toInt() and 0xFF) != 1) return null // messageID = DENM
         return try {
-            parseDenmCause(Bits(p, itsStart + 6))
+            parseDenm(Bits(p, itsStart + 6))
         } catch (_: Exception) {
             null
         }
     }
 
-    private fun parseDenmCause(b: Bits): Cause? {
+    private fun parseDenm(b: Bits): Event? {
         // DecentralizedEnvironmentalNotificationMessage preamble (4 bits)
         b.bit()                       // extension flag
         val sitPresent = b.bit()
@@ -55,12 +68,14 @@ object DenmParser {
         val transIntPres= b.bit()
 
         // ActionID: originatingStationID(32) + sequenceNumber(16)
-        b.bits(48)
+        val origin = b.bitsL(32)
+        val seqNo  = b.bits(16)
 
         // detectionTime + referenceTime: TimestampIts INTEGER(0..4398046511103) = 42 bits each
         b.bits(84)
 
         // termination OPTIONAL: ENUMERATED{isCancellation, isNegation} = 1 bit
+        val terminated = termPres == 1
         if (termPres == 1) b.bit()
 
         // eventPosition = ReferencePosition:
@@ -69,7 +84,11 @@ object DenmParser {
         //   PosConfidenceEllipse: 3 × SemiAxisLength/HeadingValue(12b each) = 36 bits
         //   AltitudeValue INT(-100000..800001) = 20 bits
         //   AltitudeConfidence ENUMERATED(16 values) = 4 bits
-        b.bits(123)
+        val latRaw = b.bitsL(31) - 900_000_000L
+        val lonRaw = b.bitsL(32) - 1_800_000_000L
+        b.bits(36 + 20 + 4)
+        val lat = (latRaw / 1e7).takeIf { latRaw != 900_000_001L && it in -90.0..90.0 }
+        val lon = (lonRaw / 1e7).takeIf { lonRaw != 1_800_000_001L && it in -180.0..180.0 }
 
         // relevanceDistance OPTIONAL: ENUM(8 non-ext values) = 3 bits
         if (relDistPres == 1) b.bits(3)
@@ -78,7 +97,7 @@ object DenmParser {
         if (relDirPres == 1) b.bits(2)
 
         // validityDuration DEFAULT(600): INT(0..86400) = 17 bits
-        if (valDurPres == 1) b.bits(17)
+        val validity = if (valDurPres == 1) b.bits(17) else 600
 
         // transmissionInterval OPTIONAL: INT(1..10000) = 14 bits
         if (transIntPres == 1) b.bits(14)
@@ -86,7 +105,12 @@ object DenmParser {
         // stationType: INT(0..255) = 8 bits
         b.bits(8)
 
-        if (sitPresent == 0) return null
+        fun ev(c: Cause?) = Event(c, origin, seqNo,
+            if (lat != null && lon != null) lat else null,
+            if (lat != null && lon != null) lon else null,
+            validity, terminated)
+
+        if (sitPresent == 0) return ev(null)
 
         // SituationContainer preamble (extensible v1.3.x): ext_bit + 3 optional flags
         b.bit()                        // extension bit
@@ -99,7 +123,7 @@ object DenmParser {
 
         val causeCode    = b.bits(8)
         val subCauseCode = b.bits(8)
-        return Cause(causeCode, subCauseCode)
+        return ev(Cause(causeCode, subCauseCode))
     }
 
     private class Bits(val b: ByteArray, startByte: Int) {
@@ -111,6 +135,7 @@ object DenmParser {
         }
 
         fun bits(n: Int): Int = (0 until n).fold(0) { acc, _ -> (acc shl 1) or bit() }
+        fun bitsL(n: Int): Long = (0 until n).fold(0L) { acc, _ -> (acc shl 1) or bit().toLong() }
     }
 
     // ── cause-code tables (ETSI EN 302 637-3 CauseCodeType) ─────────────────

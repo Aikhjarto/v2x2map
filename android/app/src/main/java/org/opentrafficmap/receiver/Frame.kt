@@ -19,6 +19,7 @@ data class Frame(
     val spatPhase: SpatTemParser.Phase? = null,
     val secured: Boolean? = null,   // GN Basic Header NH==2 → IEEE 1609.2 signed packet
     val denmCause: DenmParser.Cause? = null,
+    val denmEvent: DenmParser.Event? = null,
 ) {
     val len: Int get() = payload.size
 

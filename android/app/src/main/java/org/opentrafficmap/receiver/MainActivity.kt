@@ -645,6 +645,7 @@ class MainActivity : AppCompatActivity() {
             totalFrames++
             pendingLogFrames.add(f)          // buffered; drains in logRefresh
             markers.add(f)
+            V2xHub.ingest(f)                 // shared with the Android Auto screen
             geiger.click(f.msgType)
             if (f.msgType.name in mqttFilter) mqttBridges.forEach { it.publish(f.payload) }
             if (recorder.isRecording) recorder.append(f)

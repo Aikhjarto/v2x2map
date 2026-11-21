@@ -1,5 +1,8 @@
 **V2X2MAP** is an open-source receiver and live map for **ITS-G5 / V2X** traffic — the 5.9 GHz IEEE 802.11p messages cars and roadside infrastructure send to coordinate.
 
+
+> **Android Auto:** this fork adds a navigation app for the car screen that shows V2X traffic lights, hazards and vehicles along your route. See [docs/ANDROID_AUTO.md](docs/ANDROID_AUTO.md).
+
 Plug a $20 ESP32-C5 dev board into your phone, drive somewhere with modern infrastructure, watch the CAMs, DENMs and SPATEMs roll in.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
