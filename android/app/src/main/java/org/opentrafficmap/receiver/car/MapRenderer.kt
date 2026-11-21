@@ -24,6 +24,8 @@ data class RenderState(
     val text: NavText,
     val speedLimitKph: Int? = null,
     val speeding: Boolean = false,
+    /** Limit comes from an IVIM road sign (shown with a small "V2X" label). */
+    val speedLimitV2x: Boolean = false,
     /** Status of the ESP32 link for the V2X chip while no V2X data arrives. */
     val linkHint: String? = null,
 )
@@ -435,6 +437,12 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         textPaint.color = if (flashOn) Color.WHITE else Color.BLACK
         textPaint.textSize = if (limit >= 100) 0.72f * r else 0.9f * r
         c.drawText(limit.toString(), cx, cy + textPaint.textSize * 0.36f, textPaint)
+        if (st.speedLimitV2x) {
+            textPaint.textSize = 9f * d; textPaint.color = 0xFFD50000.toInt()
+            val label = RectF(cx - 14f * d, cy + r - 6f * d, cx + 14f * d, cy + r + 7f * d)
+            fill.color = Color.WHITE; c.drawRoundRect(label, 4f * d, 4f * d, fill)
+            c.drawText("V2X", cx, label.bottom - 3.5f * d, textPaint)
+        }
 
         if (st.speeding) {
             val kmh = (st.speedMps * 3.6).toInt().toString()

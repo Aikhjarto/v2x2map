@@ -60,7 +60,9 @@ class NavController(
     val navigating get() = route != null
     /** Posted limit at the current position (OSM via Valhalla), null if unknown. */
     var speedLimitKph: Int? = null; private set
+    var speedLimitFromV2x = false; private set
     var speeding = false; private set
+    private var osmLimit: Int? = null
     private var speedLimits: SpeedLimits? = null
     private val speedWarning = SpeedWarning()
     private val avoid = mutableListOf<LatLon>()
@@ -175,7 +177,7 @@ class NavController(
     fun stopNavigation() {
         val was = route != null
         route = null; engine = null; navState = null; destination = null; loading = false
-        speedLimits = null; speedLimitKph = null; speeding = false; speedWarning.reset()
+        speedLimits = null; osmLimit = null; speedLimitKph = null; speeding = false; speedWarning.reset()
         stopSimulation()
         if (was) {
             try { navManager.navigationEnded() } catch (_: Exception) {}
@@ -205,8 +207,7 @@ class NavController(
         if (eng != null && r != null) {
             val st = eng.update(p, acc, heading, speed)
             navState = st
-            speedLimitKph = if (st.offRoute) null else speedLimits?.at(st.distAlong)
-            speeding = speedWarning.update(speed * 3.6, speedLimitKph)
+            osmLimit = if (st.offRoute) null else speedLimits?.at(st.distAlong)
             if (st.arrived) {
                 say(text.arrived); toast(text.arrived)
                 stopNavigation(); return
@@ -217,9 +218,22 @@ class NavController(
             guidance.onProgress(r, st, speed)?.let { say(it) }
             updateTrip(r, st)
         }
+        updateSpeedLimit(speed)
         refreshV2x()
         pushRenderState()
         onChanged()
+    }
+
+    /**
+     * Road-sign limit from IVIM (also without a route) takes precedence over OpenStreetMap
+     * (route only). If the lanes carry different limits the lowest is shown, without warning.
+     */
+    private fun updateSpeedLimit(speed: Double) {
+        val p = pos
+        val ivim = if (p == null) null else IvimSpeed.limitAt(V2xHub.speedZones(), p, heading)
+        speedLimitKph = ivim?.limitKph ?: if (navigating) osmLimit else null
+        speedLimitFromV2x = ivim != null
+        speeding = speedWarning.update(speed * 3.6, if (ivim?.lanesDiffer == true) null else speedLimitKph)
     }
 
     private fun refreshV2x() {
@@ -239,7 +253,7 @@ class NavController(
             pos = pos, headingDeg = heading, speedMps = speedMps,
             route = route, distAlong = navState?.distAlong ?: 0.0,
             v2x = V2xHub.snapshot(), ahead = ahead, navigating = navigating, text = text,
-            speedLimitKph = speedLimitKph, speeding = speeding, linkHint = linkHint(),
+            speedLimitKph = speedLimitKph, speeding = speeding, speedLimitV2x = speedLimitFromV2x, linkHint = linkHint(),
         )
         renderer.requestFrame()
     }

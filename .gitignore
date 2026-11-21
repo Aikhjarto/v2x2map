@@ -47,3 +47,7 @@ blelog.txt
 *.pem
 
 website/
+
+# Python bytecode anywhere (e.g. tools/)
+__pycache__/
+*.pyc
