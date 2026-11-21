@@ -59,6 +59,22 @@
                 style="@style/Section.Hint"
                 android:text="@string/follow_hint"/>
 
+            <!-- OsmAnd add-on -->
+            <TextView
+                style="@style/Section.Header"
+                android:text="@string/osmand_section"/>
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/swOsmand"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/osmand_label"/>
+
+            <TextView
+                android:id="@+id/osmandStatus"
+                style="@style/Section.Hint"
+                android:text="@string/osmand_hint"/>
+
             <com.google.android.material.materialswitch.MaterialSwitch
                 android:id="@+id/swAutoZoom"
                 android:layout_width="match_parent"

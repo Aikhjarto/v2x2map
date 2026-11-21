@@ -63,6 +63,23 @@ class SettingsActivity : AppCompatActivity() {
             Prefs.setFollowEnabled(this, c)
             SettingsBus.followChanged(c)
         }
+        // --- OsmAnd add-on --------------------------------------------------
+        binding.swOsmand.isChecked = Prefs.osmandAddon(this)
+        binding.swOsmand.setOnCheckedChangeListener { _, c ->
+            Prefs.setOsmandAddon(this, c)
+            if (c) org.opentrafficmap.receiver.osmand.OsmAndBridge.start(this)
+            else org.opentrafficmap.receiver.osmand.OsmAndBridge.stop()
+        }
+        binding.osmandStatus.setOnClickListener {
+            // newer OsmAnd versions have a permission dialog; older ones: Plugins → connected apps
+            org.opentrafficmap.receiver.osmand.OsmAndBridge.permissionRequestIntent(this)?.let {
+                runCatching { startActivity(it) }
+            }
+        }
+        // Debug builds: long press inserts a simulated traffic light + hazard near you (desk test)
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            binding.osmandStatus.setOnLongClickListener { insertDemoV2x(); true }
+        }
         binding.swAutoZoom.isChecked = Prefs.autoZoom(this)
         binding.swAutoZoom.setOnCheckedChangeListener { _, c -> Prefs.setAutoZoom(this, c) }
 
@@ -203,6 +220,42 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    private val osmandListener = org.opentrafficmap.receiver.osmand.OsmAndBridge.Listener { st ->
+        runOnUiThread {
+            if (!::binding.isInitialized) return@runOnUiThread
+            binding.osmandStatus.text = getString(when (st) {
+                org.opentrafficmap.receiver.osmand.OsmAndBridge.Status.OFF -> R.string.osmand_hint
+                org.opentrafficmap.receiver.osmand.OsmAndBridge.Status.NO_OSMAND -> R.string.osmand_status_missing
+                org.opentrafficmap.receiver.osmand.OsmAndBridge.Status.CONNECTING -> R.string.osmand_status_connecting
+                org.opentrafficmap.receiver.osmand.OsmAndBridge.Status.NOT_ENABLED -> R.string.osmand_status_not_enabled
+                org.opentrafficmap.receiver.osmand.OsmAndBridge.Status.ACTIVE -> R.string.osmand_status_active
+            })
+        }
+    }
+
+    /** Debug only: simulated SPATEM light (red) ~55 m north and DENM roadworks ~60 m east of the last position. */
+    private fun insertDemoV2x() {
+        try {
+            com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this).lastLocation
+                .addOnSuccessListener { l ->
+                    if (l == null) { Toast.makeText(this, "No position yet", Toast.LENGTH_SHORT).show(); return@addOnSuccessListener }
+                    val now = System.currentTimeMillis()
+                    V2xHub.putSimulatedSignal(org.opentrafficmap.receiver.nav.V2xSignal(999_001L,
+                        org.opentrafficmap.receiver.nav.LatLon(l.latitude + 0.0005, l.longitude),
+                        org.opentrafficmap.receiver.nav.SignalPhase.RED, now, simulated = true))
+                    V2xHub.putSimulatedHazard(org.opentrafficmap.receiver.nav.V2xHazard("sim:osmand",
+                        org.opentrafficmap.receiver.nav.LatLon(l.latitude, l.longitude + 0.0008), 3, 0, "roadworks (SIM)",
+                        now, now + 10 * 60_000L, simulated = true))
+                    Toast.makeText(this, "Demo light + hazard inserted (10 min)", Toast.LENGTH_SHORT).show()
+                }
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "Location permission missing", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onStart() { super.onStart(); org.opentrafficmap.receiver.osmand.OsmAndBridge.addListener(osmandListener) }
+    override fun onStop() { org.opentrafficmap.receiver.osmand.OsmAndBridge.removeListener(osmandListener); super.onStop() }
 
     private fun renderRecordingState() {
         val rec = SettingsBus.recorder()

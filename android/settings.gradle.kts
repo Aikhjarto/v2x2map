@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ITS-G5 Receiver"
 include(":app")
+include(":osmand-api")

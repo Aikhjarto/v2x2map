@@ -236,6 +236,13 @@
     <string name="rec_loading">Loading %1$s…</string>
     <string name="rec_loaded">Showing %1$d frames from %2$s (tap Reset to return to live data only)</string>
     <string name="rec_load_failed">Could not load recording: %1$s</string>
+    <string name="osmand_section">OsmAnd</string>
+    <string name="osmand_label">Show V2X in OsmAnd</string>
+    <string name="osmand_hint">Adds a "V2X2MAP" layer to an installed OsmAnd: vehicles, traffic lights and hazards, plus a status widget. Navigate offline with OsmAnd and see V2X at the same time.</string>
+    <string name="osmand_status_missing">OsmAnd is not installed (or too old for its AIDL interface).</string>
+    <string name="osmand_status_connecting">Connecting to OsmAnd…</string>
+    <string name="osmand_status_not_enabled">OsmAnd rejects V2X2MAP: enable it in OsmAnd → Menu → Plugins (connected apps). Newer OsmAnd: tap here to grant access.</string>
+    <string name="osmand_status_active">Active — V2X layer and widget are shown in OsmAnd (layer can be toggled in OsmAnd → Configure map).</string>
     <string name="notif_stop">Stop</string>
     <string name="share_target_label">Navigate with V2X2MAP</string>
     <string name="share_dest_resolving">V2X2MAP: looking up destination…</string>

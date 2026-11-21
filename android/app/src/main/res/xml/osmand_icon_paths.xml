@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Point images for the OsmAnd add-on (OsmAndIcons), readable by OsmAnd via granted content URIs -->
+<paths>
+    <files-path name="osmand_icons" path="osmand_icons/"/>
+</paths>

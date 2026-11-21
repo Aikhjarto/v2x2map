@@ -95,6 +95,9 @@ dependencies {
     // Android Auto (Car App Library) — navigation template + surface map
     implementation("androidx.car.app:app:1.4.0")
 
+    // OsmAnd add-on: AIDL API of OsmAnd (copied module, see osmand-api/NOTICE.md)
+    implementation(project(":osmand-api"))
+
     testImplementation("junit:junit:4.13.2")
 
     // MQTT (Paho Java client, async I/O runs on its own thread)

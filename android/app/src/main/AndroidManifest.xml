@@ -34,6 +34,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"
                      tools:targetApi="34"/>
 
+    <!-- OsmAnd add-on: find OsmAnd's AIDL service and permission dialog (Android 11+ package visibility) -->
+    <queries>
+        <intent><action android:name="net.osmand.aidl.OsmandAidlServiceV2"/></intent>
+        <intent><action android:name="net.osmand.aidl.REQUEST_PERMISSIONS"/></intent>
+    </queries>
+
     <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false"/>
 
@@ -101,6 +107,15 @@
                 <data android:scheme="geo"/>
             </intent-filter>
         </activity>
+
+        <!-- OsmAnd add-on: point images handed to OsmAnd as content URIs -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.osmandicons"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/osmand_icon_paths"/>
+        </provider>
 
         <!-- ===== Android Auto: navigation app with V2X layer ===== -->
         <meta-data
