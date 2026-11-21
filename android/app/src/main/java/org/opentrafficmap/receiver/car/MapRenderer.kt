@@ -205,9 +205,9 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
             else -> 14.8
         }
         camZoom += ((autoZoom + userZoomDelta).coerceIn(4.0, 19.0) - camZoom) * 0.15
-        st?.headingDeg?.let { h -> if (speed > 1.5 || smoothHeading == 0.0) smoothHeading += Geo.angleDiff(h, smoothHeading) * 0.25 }
+        st?.headingDeg?.let { h -> if (speed > 1.5 || smoothHeading == 0.0) smoothHeading = Geo.normDeg(smoothHeading + Geo.angleDiff(h, smoothHeading) * 0.25) }
         val targetBearing = if (following && st?.navigating == true) smoothHeading else if (following) smoothHeading else camBearing
-        camBearing = (camBearing + Geo.angleDiff(targetBearing, camBearing) * 0.25 + 360) % 360
+        camBearing = Geo.normDeg(camBearing + Geo.angleDiff(targetBearing, camBearing) * 0.25)
 
         val vis = if (visible.isEmpty) Rect(0, 0, width, height) else visible
         val fx = vis.exactCenterX()

@@ -27,7 +27,15 @@ object Geo {
     }
 
     /** Smallest signed difference a-b in degrees, range -180..180. */
-    fun angleDiff(a: Double, b: Double): Double = ((a - b + 540.0) % 360.0) - 180.0
+    /**
+     * Shortest signed difference a − b in degrees, in [-180, 180), for any inputs (also values
+     * outside 0..360 — Kotlin's % keeps the sign, so the old ((a-b+540) % 360) - 180 broke for
+     * a − b < −540 and made the car map spin).
+     */
+    fun angleDiff(a: Double, b: Double): Double = (((a - b) % 360.0) + 540.0) % 360.0 - 180.0
+
+    /** Normalises [deg] to [0, 360). */
+    fun normDeg(deg: Double): Double = ((deg % 360.0) + 360.0) % 360.0
 
     fun interpolate(a: LatLon, b: LatLon, t: Double): LatLon =
         LatLon(a.lat + (b.lat - a.lat) * t, a.lon + (b.lon - a.lon) * t)
