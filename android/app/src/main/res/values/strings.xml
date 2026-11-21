@@ -142,6 +142,7 @@
     <string name="detail_type_itsg5_unknown">ITS-G5 (unknown BTP port)</string>
     <string name="detail_label_frame">Frame</string>
     <string name="detail_label_time">Time</string>
+    <string name="detail_time_unknown">unknown (old recording)</string>
     <string name="detail_label_ethertype">EtherType</string>
     <string name="detail_label_station">Station</string>
     <string name="detail_label_position">Position</string>
@@ -223,6 +224,15 @@
     <string name="about_license_material">Android Material Components — Apache 2.0</string>
     <string name="about_license_flexbox">FlexboxLayout — Apache 2.0</string>
     <string name="about_license_kotlin">Kotlin Standard Library &amp; Coroutines — Apache 2.0</string>
+    <string name="rec_armed">Recording on: a new file starts with the next received frame (also after app restarts)</string>
+    <string name="rec_status_armed">Recording on — waiting for frames</string>
+    <string name="rec_load">Load recording…</string>
+    <string name="rec_load_title">Load recording</string>
+    <string name="rec_load_other">Other file…</string>
+    <string name="rec_load_none">No recordings of this app yet</string>
+    <string name="rec_loading">Loading %1$s…</string>
+    <string name="rec_loaded">Showing %1$d frames from %2$s (tap Reset to return to live data only)</string>
+    <string name="rec_load_failed">Could not load recording: %1$s</string>
     <string name="notif_stop">Stop</string>
     <string name="share_target_label">Navigate with V2X2MAP</string>
     <string name="share_dest_resolving">V2X2MAP: looking up destination…</string>

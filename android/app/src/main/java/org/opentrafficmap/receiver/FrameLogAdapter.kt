@@ -219,7 +219,7 @@ class FrameLogAdapter(
     private fun bindFrame(vh: FrameVH, frame: Frame) {
         vh.itemView.setBackgroundColor(0x0A000000)   // faint tint to visually indent
         vh.itemView.setOnClickListener { onFrameClick(frame) }
-        vh.time.text = timeFmt.format(Date(frame.sec * 1000L + frame.usec / 1000L))
+        vh.time.text = if (frame.receivedMs > 0) timeFmt.format(Date(frame.receivedMs)) else "--:--:--"
         vh.len.text  = frame.len.toString()
         vh.hex.text  = frame.hexPreview()
         when (frame.etherType) {

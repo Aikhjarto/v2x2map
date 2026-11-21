@@ -20,6 +20,8 @@ data class Frame(
     val secured: Boolean? = null,   // GN Basic Header NH==2 → IEEE 1609.2 signed packet
     val denmCause: DenmParser.Cause? = null,
     val denmEvent: DenmParser.Event? = null,
+    /** Phone clock time (epoch ms) when the frame was received; 0 = unknown (old recording). */
+    val receivedMs: Long = System.currentTimeMillis(),
 ) {
     val len: Int get() = payload.size
 

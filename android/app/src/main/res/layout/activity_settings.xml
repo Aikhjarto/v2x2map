@@ -170,6 +170,14 @@
                 android:layout_marginTop="6dp"
                 android:text="@string/rec_off"/>
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLoadRecording"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/rec_load"/>
+
             <!-- Map -->
             <TextView
                 style="@style/Section.Header"

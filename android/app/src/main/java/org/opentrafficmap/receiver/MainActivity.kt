@@ -33,6 +33,7 @@ import org.osmdroid.tileprovider.tilesource.ITileSource
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.tileprovider.tilesource.XYTileSource
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.overlay.Polyline
@@ -243,6 +244,7 @@ class MainActivity : AppCompatActivity() {
             FramePipeline.stopMqtt(); if (on) FramePipeline.startMqtt(this)
         }
         SettingsBus.onRecordingToggle = SettingsBus.OnRecordingToggle { FramePipeline.toggleRecording(this) }
+        SettingsBus.onLoadFrames = SettingsBus.OnLoadFrames { frames, label -> showRecording(frames, label) }
         SettingsBus.onMapDownload = SettingsBus.OnMapDownload { downloadVisibleMap() }
         SettingsBus.onAudioChanged = SettingsBus.OnAudioChanged { on ->
             if (on) geiger.start() else geiger.stop()
@@ -287,6 +289,7 @@ class MainActivity : AppCompatActivity() {
     // ------------------------------------------ Reset
 
     private fun resetAll() {
+        viewingRecording = null
         pendingLogFrames.clear()
         if (::markers.isInitialized) markers.clear()
         adapter.clear()
@@ -601,13 +604,32 @@ class MainActivity : AppCompatActivity() {
         FramePipeline.onFrames(frames)
     }
 
-    private fun handleFrames(frames: List<Frame>) {
+    /**
+     * Shows a loaded recording in the log and on the map. Only the phone UI sees these frames —
+     * they are NOT sent to MQTT, the recorder or the car screen. Marker expiry pauses until Reset.
+     */
+    private fun showRecording(frames: List<Frame>, label: String) {
+        resetAll()
+        viewingRecording = label
+        handleFrames(frames, live = false)
+        val pts = frames.mapNotNull { f -> f.latLon?.let { GeoPoint(it.first, it.second) } }
+        if (pts.size >= 2) binding.map.post {
+            runCatching { binding.map.zoomToBoundingBox(BoundingBox.fromGeoPointsSafe(pts).increaseByScale(1.2f), true) }
+        } else pts.firstOrNull()?.let { binding.map.controller.animateTo(it) }
+    }
+
+    /** Set while a loaded recording is displayed (pauses marker expiry); cleared by Reset. */
+    private var viewingRecording: String? = null
+
+    private fun handleFrames(frames: List<Frame>, live: Boolean = true) {
         for (f in frames) {
             totalFrames++
             pendingLogFrames.add(f)          // buffered; drains in logRefresh
             markers.add(f)
-            geiger.click(f.msgType)
-            rateWindow.add(System.currentTimeMillis())
+            if (live) {
+                geiger.click(f.msgType)
+                rateWindow.add(System.currentTimeMillis())
+            }
 
             if (f.msgType == ItsG5Decoder.MsgType.SPATEM && f.latLon != null) {
                 val (lat, lon) = f.latLon
@@ -678,8 +700,9 @@ class MainActivity : AppCompatActivity() {
                 rate > 60  -> ""
                 else       -> ""
             }
-            binding.logStats.text = getString(R.string.log_stats, totalFrames.toInt(), rate) + suffix
-            if (::markers.isInitialized) markers.prune()
+            binding.logStats.text = getString(R.string.log_stats, totalFrames.toInt(), rate) + suffix +
+                (viewingRecording?.let { "  ·  $it" } ?: "")
+            if (::markers.isInitialized && viewingRecording == null) markers.prune()
             mainHandler.postDelayed(this, 1_000)
         }
     }

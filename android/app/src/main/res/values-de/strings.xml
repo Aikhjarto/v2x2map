@@ -143,6 +143,7 @@
     <string name="detail_type_itsg5_unknown">ITS-G5 (unbekannter BTP-Port)</string>
     <string name="detail_label_frame">Frame</string>
     <string name="detail_label_time">Zeit</string>
+    <string name="detail_time_unknown">unbekannt (alte Aufnahme)</string>
     <string name="detail_label_ethertype">EtherType</string>
     <string name="detail_label_station">Station</string>
     <string name="detail_label_position">Position</string>
@@ -209,6 +210,15 @@
     <string name="hw_led_user_body">• Aus – Sniffer läuft normal, wartet auf Frames.\n• Kurzes Aufleuchten beim Start – Bootloader aktiv / App startet.\n• Dauerhaft an – Board im Download-Modus. Passiert wenn das RTS-Signal beim Verbinden gesetzt bleibt. App und Bridge erzwingen RTS=low nach dem Öffnen. Bei Drittsoftware DTR=false, RTS=false manuell setzen.</string>
     <string name="hw_no_frames_title">Keine Frames obwohl verbunden?</string>
     <string name="hw_no_frames_body">Der Sniffer startet auf Kanal 1 (2,4 GHz). Echter ITS-G5-/V2X-Verkehr liegt bei 5,9 GHz — RSSI −128 dBm und null Frames ist normal bis der Kanal über die UART-Konsole (GPIO 11/12, ohne Probe nicht zugänglich) gewechselt wird.\n\nEin Test-Frame (Payload DEADBEEF…) wird bei jedem Boot gesendet und erscheint als erster Eintrag im Frame-Log — damit lässt sich prüfen ob USB und Firmware funktionieren.</string>
+    <string name="rec_armed">Aufnahme an: Eine neue Datei beginnt mit dem nächsten empfangenen Frame (auch nach App-Neustarts)</string>
+    <string name="rec_status_armed">Aufnahme an – warte auf Frames</string>
+    <string name="rec_load">Aufnahme laden…</string>
+    <string name="rec_load_title">Aufnahme laden</string>
+    <string name="rec_load_other">Andere Datei…</string>
+    <string name="rec_load_none">Noch keine Aufnahmen dieser App</string>
+    <string name="rec_loading">Lade %1$s…</string>
+    <string name="rec_loaded">%1$d Frames aus %2$s angezeigt (Zurücksetzen antippen, um nur Live-Daten zu sehen)</string>
+    <string name="rec_load_failed">Aufnahme konnte nicht geladen werden: %1$s</string>
     <string name="notif_stop">Beenden</string>
     <string name="share_target_label">Mit V2X2MAP navigieren</string>
     <string name="share_dest_resolving">V2X2MAP: Ziel wird gesucht…</string>

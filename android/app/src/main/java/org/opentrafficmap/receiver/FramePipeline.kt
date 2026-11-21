@@ -57,6 +57,9 @@ object FramePipeline {
     fun onFrames(frames: List<Frame>) {
         if (frames.isEmpty()) return
         val now = System.currentTimeMillis()
+        val ctx = app
+        // Persistent recording setting: open a new file with the first frame of a session.
+        if (ctx != null && Prefs.recordingEnabled(ctx)) recorder(ctx).let { if (!it.isRecording) it.start() }
         val rec = recorderRef
         val filter = if (mqttBridges.isEmpty()) emptySet() else app?.let { Prefs.mqttFilterTypes(it) } ?: emptySet()
         for (f in frames) {
@@ -78,15 +81,20 @@ object FramePipeline {
 
     // ---- recording / MQTT -------------------------------------------------------------
 
-    /** Toggles PCAP recording; returns a user-facing status message. */
+    /**
+     * Toggles the (persistent) recording setting; returns a user-facing status message.
+     * On: a file starts with the next received frame. Off: the current file is closed.
+     */
     fun toggleRecording(ctx: Context): String {
         val rec = recorder(ctx)
-        return if (rec.isRecording) {
-            val stopped = rec.stop()
-            ctx.getString(R.string.rec_stopped, rec.frameCount, stopped?.absolutePath ?: "?")
+        val on = !Prefs.recordingEnabled(ctx)
+        Prefs.setRecordingEnabled(ctx, on)
+        return if (on) {
+            ctx.getString(R.string.rec_armed)
         } else {
-            val f = rec.start()
-            if (f != null) ctx.getString(R.string.rec_started, f.absolutePath) else "recording start failed"
+            val stopped = rec.stop()
+            if (stopped != null) ctx.getString(R.string.rec_stopped, rec.frameCount, stopped.absolutePath)
+            else ctx.getString(R.string.rec_status_idle)
         }
     }
 

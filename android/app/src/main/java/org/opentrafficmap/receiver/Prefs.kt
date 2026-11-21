@@ -13,6 +13,7 @@ object Prefs {
     private const val KEY_LEGAL_ACCEPTED = "legal_accepted"
     private const val KEY_FOLLOW_ENABLED = "follow_enabled"
     private const val KEY_MQTT_ENABLED   = "mqtt_enabled"
+    private const val KEY_RECORDING      = "recording_enabled"
     private const val KEY_MQTT_BROKER    = "mqtt_broker"   // legacy single-broker key
     private const val KEY_MQTT_BROKERS   = "mqtt_brokers"  // multi-broker: one URL per line
     private const val KEY_NODE_ID        = "node_id"
@@ -47,6 +48,13 @@ object Prefs {
 
     fun setMqttEnabled(ctx: Context, on: Boolean) =
         prefs(ctx).edit { putBoolean(KEY_MQTT_ENABLED, on) }
+
+    /** Frame recording switched on: kept across app restarts; a new file starts with the first frame. */
+    fun recordingEnabled(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(KEY_RECORDING, false)
+
+    fun setRecordingEnabled(ctx: Context, on: Boolean) =
+        prefs(ctx).edit { putBoolean(KEY_RECORDING, on) }
 
     /** Returns the list of broker URLs. Migrates from the legacy single-broker key on first call. */
     fun mqttBrokerList(ctx: Context): List<String> {

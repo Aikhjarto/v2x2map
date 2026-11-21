@@ -12,7 +12,7 @@ import kotlin.math.abs
 
 object FrameDetailSheet {
 
-    private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
+    private val dateTimeFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
     fun show(context: Context, f: Frame) {
         val sheet = BottomSheetDialog(context)
@@ -53,8 +53,11 @@ object FrameDetailSheet {
         fun row(label: String, value: String) = sb.append("%-14s  %s\n".format(label, value))
 
         row(ctx.getString(R.string.detail_label_frame), "#${f.seq}")
-        row(ctx.getString(R.string.detail_label_time),
-            timeFmt.format(Date()) + "  (ts ${f.sec}.%06d s)".format(f.usec))
+        // Receive time from the frame itself (the old code showed the time the sheet was opened).
+        val received = if (f.receivedMs > 0) dateTimeFmt.format(Date(f.receivedMs))
+                       else ctx.getString(R.string.detail_time_unknown)
+        val radioTs = if (f.sec < 1_000_000_000L) "  (ESP32 ${f.sec}.%03d s)".format(f.usec / 1000) else ""
+        row(ctx.getString(R.string.detail_label_time), received + radioTs)
         row(ctx.getString(R.string.detail_label_ethertype), when (f.etherType) {
             null   -> "—"
             0x8947 -> "0x8947  ITS-G5"

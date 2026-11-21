@@ -94,8 +94,11 @@ class FrameRecorder(private val context: Context) {
     private fun writePcapPacket(out: BufferedOutputStream, frame: Frame) {
         val len = frame.payload.size
         val hdr = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN)
-        hdr.putInt(frame.sec.toInt())   // ts_sec
-        hdr.putInt(frame.usec.toInt())  // ts_usec
+        // Phone clock time, so Wireshark and "Load recording" show real dates. (Older files
+        // stored the ESP32's uptime here; the decoder's own radio timestamp is not kept.)
+        val ms = if (frame.receivedMs > 0) frame.receivedMs else System.currentTimeMillis()
+        hdr.putInt((ms / 1000).toInt())          // ts_sec
+        hdr.putInt(((ms % 1000) * 1000).toInt()) // ts_usec
         hdr.putInt(len)                 // incl_len
         hdr.putInt(len)                 // orig_len
         out.write(hdr.array())

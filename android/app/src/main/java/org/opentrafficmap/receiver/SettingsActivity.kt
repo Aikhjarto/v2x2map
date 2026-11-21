@@ -7,10 +7,22 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.activity.result.contract.ActivityResultContracts
+import java.io.File
+import java.io.InputStream
+import java.text.DateFormat
+import java.util.Date
 import com.google.android.material.textfield.TextInputEditText
 import org.opentrafficmap.receiver.databinding.ActivitySettingsBinding
 
 class SettingsActivity : AppCompatActivity() {
+
+    /** System file picker for recordings outside the app's own folder (e.g. Download). */
+    private val openRecording = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) loadRecording(uri.lastPathSegment?.substringAfterLast('/') ?: "file") {
+            contentResolver.openInputStream(uri) ?: throw java.io.IOException("cannot open")
+        }
+    }
 
     private lateinit var binding: ActivitySettingsBinding
 
@@ -89,6 +101,7 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, msg ?: getString(R.string.rec_status_idle), Toast.LENGTH_LONG).show()
             renderRecordingState()
         }
+        binding.btnLoadRecording.setOnClickListener { showLoadRecordingDialog() }
 
         // --- Marker / path TTL ----------------------------------------------
         binding.edMarkerTtl.setText(Prefs.markerTtlMinutes(this).toString())
@@ -191,10 +204,53 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun renderRecordingState() {
         val rec = SettingsBus.recorder()
-        binding.btnRecord.text = getString(if (rec?.isRecording == true) R.string.rec_on else R.string.rec_off)
-        binding.recStatus.text = if (rec?.isRecording == true)
-            getString(R.string.rec_status_active, rec.file?.absolutePath ?: "?", rec.frameCount)
-        else getString(R.string.rec_status_idle)
+        val enabled = Prefs.recordingEnabled(this)
+        binding.btnRecord.text = getString(if (enabled) R.string.rec_on else R.string.rec_off)
+        binding.recStatus.text = when {
+            rec?.isRecording == true -> getString(R.string.rec_status_active, rec.file?.absolutePath ?: "?", rec.frameCount)
+            enabled -> getString(R.string.rec_status_armed)
+            else -> getString(R.string.rec_status_idle)
+        }
+    }
+
+    // ── load a recording ─────────────────────────────────────────────────────
+
+    /** Own recordings (newest first) plus "Other file…" via the system picker. */
+    private fun showLoadRecordingDialog() {
+        val dir = getExternalFilesDir(null) ?: filesDir
+        val files = (dir.listFiles { f -> f.isFile && f.name.endsWith(".pcap") && f.length() > 24 } ?: emptyArray())
+            .sortedByDescending { it.lastModified() }
+        val fmt = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+        val labels = files.map { "${fmt.format(Date(it.lastModified()))}  ·  ${it.length() / 1024} kB" } +
+            getString(R.string.rec_load_other)
+        AlertDialog.Builder(this)
+            // An AlertDialog shows either a message or a list — never both — so the
+            // "no recordings yet" hint goes into the title to keep "Other file…" visible.
+            .setTitle(if (files.isEmpty()) R.string.rec_load_none else R.string.rec_load_title)
+            .setItems(labels.toTypedArray()) { _, i ->
+                if (i < files.size) files[i].let { f -> loadRecording(f.name) { f.inputStream() } }
+                else openRecording.launch(arrayOf("*/*"))
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** Parses the PCAP off the main thread, then hands the frames to the map/log and closes Settings. */
+    private fun loadRecording(name: String, open: () -> InputStream) {
+        Toast.makeText(this, getString(R.string.rec_loading, name), Toast.LENGTH_SHORT).show()
+        Thread {
+            val result = runCatching { open().use { PcapReader.read(it) } }
+            runOnUiThread {
+                result.onSuccess { frames ->
+                    SettingsBus.loadFrames(frames, name)
+                    Toast.makeText(this, getString(R.string.rec_loaded, frames.size, name), Toast.LENGTH_LONG).show()
+                    finish()
+                }.onFailure { e ->
+                    Toast.makeText(this, getString(R.string.rec_load_failed, e.message ?: e.javaClass.simpleName),
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun mqttTypeLabel(type: ItsG5Decoder.MsgType): String = getString(when (type) {

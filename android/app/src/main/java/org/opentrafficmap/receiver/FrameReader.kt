@@ -55,24 +55,7 @@ class FrameReader {
             val payload = ByteArray(plen)
             for (j in 0 until plen) payload[j] = buf.removeFirst()
 
-            val d = ItsG5Decoder.decodeFull(payload)
-            out += Frame(
-                seq         = ++seq,
-                sec         = sec,
-                usec        = usec,
-                payload     = payload,
-                etherType   = d.etherType,
-                msgType     = d.msgType,
-                stationId   = d.stationId,
-                stationType = d.stationType,
-                latLon      = d.latLon,
-                headingDeg  = d.headingDeg,
-                speedMps    = d.speedMps,
-                spatPhase   = d.spatPhase,
-                denmCause   = d.denmCause,
-                denmEvent   = d.denmEvent,
-                secured     = d.secured,
-            )
+            out += decodeFrame(++seq, sec, usec, payload)
         }
     }
 
@@ -98,4 +81,28 @@ class FrameReader {
         const val HEADER_LEN = 14
         const val MAX_PAYLOAD = 4096
     }
+}
+
+/** Decodes one raw 802.11 payload into a [Frame] (shared by the live reader and [PcapReader]). */
+fun decodeFrame(seq: Long, sec: Long, usec: Long, payload: ByteArray,
+                receivedMs: Long = System.currentTimeMillis()): Frame {
+    val d = ItsG5Decoder.decodeFull(payload)
+    return Frame(
+        seq         = seq,
+        sec         = sec,
+        usec        = usec,
+        payload     = payload,
+        etherType   = d.etherType,
+        msgType     = d.msgType,
+        stationId   = d.stationId,
+        stationType = d.stationType,
+        latLon      = d.latLon,
+        headingDeg  = d.headingDeg,
+        speedMps    = d.speedMps,
+        spatPhase   = d.spatPhase,
+        denmCause   = d.denmCause,
+        denmEvent   = d.denmEvent,
+        secured     = d.secured,
+        receivedMs  = receivedMs,
+    )
 }
