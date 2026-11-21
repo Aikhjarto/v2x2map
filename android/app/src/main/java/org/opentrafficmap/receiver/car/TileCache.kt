@@ -4,6 +4,10 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.util.LruCache
 import java.io.File
 import java.net.HttpURLConnection
@@ -18,15 +22,43 @@ import java.util.concurrent.Executors
  */
 class TileCache(private val ctx: Context, private val onTileLoaded: () -> Unit) {
 
-    data class Style(val id: String, val urls: List<String>, val tilePx: Int, val osmdroidName: String?)
+    /**
+     * @param id           memory-cache key prefix (differs per look)
+     * @param source       disk-cache directory (shared by styles that download the same tiles)
+     * @param osmdroidName provider name in the phone app's osmdroid cache, for the offline fallback
+     * @param night        darken the tiles (invert + hue-rotate) after decoding
+     */
+    data class Style(val id: String, val source: String, val urls: List<String>,
+                     val osmdroidName: String?, val night: Boolean)
 
     companion object {
-        // CARTO basemaps: free for low-volume use with attribution, retina (@2x = 512 px) tiles.
-        val DAY = Style("voyager", listOf("a", "b", "c", "d").map {
-            "https://$it.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png" }, 512, "Mapnik")
-        val NIGHT = Style("dark", listOf("a", "b", "c", "d").map {
-            "https://$it.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png" }, 512, "CartoDB_DarkMatter")
-        private const val USER_AGENT = "V2X2MAP-Auto/1.0 (Android Auto navigation)"
+        // OpenStreetMap standard tiles (same as the phone app's default layer). CARTO basemaps
+        // used to be keyless but now only return an "API KEY REQUIRED" placeholder tile.
+        private val OSM_URLS = listOf("https://tile.openstreetmap.org/{z}/{x}/{y}.png")
+        val DAY = Style("osm", "osm", OSM_URLS, "Mapnik", night = false)
+        val NIGHT = Style("osm-night", "osm", OSM_URLS, "Mapnik", night = true)
+        private const val USER_AGENT = "V2X2MAP-Auto/1.0 (org.opentrafficmap.receiver; Android Auto navigation)"
+
+        /** Invert, rotate hue by 180° (keeps water blue, parks green) and dim — a dark map from light tiles. */
+        private val NIGHT_FILTER = ColorMatrixColorFilter(ColorMatrix().apply {
+            set(floatArrayOf(
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
+                0f, 0f, 0f, 1f, 0f))
+            postConcat(ColorMatrix(floatArrayOf(   // CSS hue-rotate(180deg)
+                -0.574f, 1.430f, 0.144f, 0f, 0f,
+                0.426f, 0.430f, 0.144f, 0f, 0f,
+                0.426f, 1.430f, -0.856f, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f)))
+            postConcat(ColorMatrix().apply { setScale(0.80f, 0.82f, 0.88f, 1f) })
+        })
+
+        private fun toNight(src: Bitmap): Bitmap {
+            val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+            Canvas(out).drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = NIGHT_FILTER })
+            return out
+        }
     }
 
     private val mem = object : LruCache<String, Bitmap>(48 * 1024 * 1024) {
@@ -60,7 +92,7 @@ class TileCache(private val ctx: Context, private val onTileLoaded: () -> Unit) 
 
     private fun load(style: Style, z: Int, x: Int, y: Int, key: String) {
         try {
-            val file = File(diskDir, "$key.png")
+            val file = File(diskDir, "${style.source}/$z/$x/$y.png")
             var bmp: Bitmap? = null
             if (file.exists() && System.currentTimeMillis() - file.lastModified() < 30L * 24 * 3600_000)
                 bmp = BitmapFactory.decodeFile(file.path)
@@ -69,6 +101,7 @@ class TileCache(private val ctx: Context, private val onTileLoaded: () -> Unit) 
             }?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
             if (bmp == null && file.exists()) bmp = BitmapFactory.decodeFile(file.path) // stale but better than nothing
             if (bmp == null) bmp = fromOsmdroid(style, z, x, y)
+            if (bmp != null && style.night) bmp = toNight(bmp)
             if (bmp != null) { mem.put(key, bmp); failed.remove(key); onTileLoaded() }
             else failed[key] = System.currentTimeMillis()
         } catch (_: Throwable) {

@@ -292,10 +292,10 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         // --- HUD
         st?.let { drawHud(c, it, dens, dark) }
 
-        // attribution (required by CARTO / OSM)
+        // attribution (required by the OSM tile usage policy)
         textPaint.textSize = 9f * dens; textPaint.color = if (dark) 0x99FFFFFF.toInt() else 0x99000000.toInt()
         textPaint.textAlign = Paint.Align.RIGHT
-        c.drawText("© OpenStreetMap © CARTO", vis.right - 6f * dens, vis.bottom - 6f * dens, textPaint)
+        c.drawText("© OpenStreetMap contributors",vis.right - 6f * dens, vis.bottom - 6f * dens, textPaint)
         textPaint.textAlign = Paint.Align.CENTER
     }
 

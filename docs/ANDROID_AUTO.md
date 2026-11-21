@@ -10,7 +10,7 @@ turn-by-turn guidance, plus the live ITS-G5 picture from your ESP32-C5:
 | **CAM** (vehicles) | Live vehicles (buses/trams purple, trucks brown). Emergency vehicles (StationType 10) flash red/blue and trigger a "make way" warning |
 
 Routing is done by the open-source Valhalla server run by FOSSGIS (the one openstreetmap.org uses).
-Search uses Photon. The map is CARTO Voyager by day and Dark Matter at night. All three are free and
+Search uses Photon. The map uses the OpenStreetMap standard tiles, darkened at night. All three are free and
 need no API key, but they **need mobile data**. If there is no network, the map falls back to tiles
 you downloaded in the phone app ("Download visible map").
 
