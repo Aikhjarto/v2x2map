@@ -142,6 +142,7 @@
     <string name="detail_type_itsg5_unknown">ITS-G5 (unknown BTP port)</string>
     <string name="detail_label_frame">Frame</string>
     <string name="detail_label_time">Time</string>
+    <string name="detail_decoded">Decoded</string>
     <string name="detail_time_unknown">unknown (old recording)</string>
     <string name="detail_label_ethertype">EtherType</string>
     <string name="detail_label_station">Station</string>

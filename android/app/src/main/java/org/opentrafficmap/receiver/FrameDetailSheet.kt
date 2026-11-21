@@ -1,5 +1,9 @@
 package org.opentrafficmap.receiver
 
+import org.opentrafficmap.receiver.asn1.AsnFormat
+import org.opentrafficmap.receiver.asn1.AsnValue
+import org.opentrafficmap.receiver.asn1.ItsFrameDecoder
+
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -25,6 +29,7 @@ object FrameDetailSheet {
         view.findViewById<TextView>(R.id.detailSize).text  = "${f.len} B"
         view.findViewById<TextView>(R.id.detailMeta).text  = buildMeta(context, f)
         view.findViewById<TextView>(R.id.detailHex).text   = hexDump(f.payload)
+        view.findViewById<TextView>(R.id.detailDecoded).text = decodedText(context, f)
 
         sheet.show()
     }
@@ -90,6 +95,30 @@ object FrameDetailSheet {
         }
 
         return sb.toString().trimEnd()
+    }
+
+    @Volatile private var decoder: ItsFrameDecoder? = null
+
+    private fun decoder(ctx: Context): ItsFrameDecoder = decoder ?: synchronized(this) {
+        decoder ?: ItsFrameDecoder { set -> ctx.applicationContext.assets.open("its_asn1/$set.json") }.also { decoder = it }
+    }
+
+    /** All layers of the frame, fully decoded (see ItsFrameDecoder). */
+    private fun decodedText(ctx: Context, f: Frame): String = try {
+        val sb = StringBuilder()
+        for (layer in decoder(ctx).decode(f.payload)) {
+            sb.append("── ").append(layer.title).append('\n')
+            layer.rows.forEach { (k, v) -> sb.append("  ").append(k).append(": ").append(v).append('\n') }
+            layer.value?.let { v ->
+                v.let { root -> if (root is AsnValue.Seq) root.fields.forEach { (k, x) -> AsnFormat.tree(x, k, sb, 1) }
+                                else AsnFormat.tree(root, layer.title, sb, 1) }
+            }
+            layer.error?.let { sb.append("  ⚠ ").append(it).append('\n') }
+            sb.append('\n')
+        }
+        sb.toString().trimEnd()
+    } catch (e: Exception) {
+        "⚠ ${e.javaClass.simpleName}: ${e.message}"
     }
 
     private fun hexDump(data: ByteArray): String {
