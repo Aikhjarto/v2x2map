@@ -55,24 +55,25 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
                 b.setNavigationInfo(TripBuilder.routingInfo(r, st))
                 b.setDestinationTravelEstimate(TripBuilder.destinationEstimate(st))
             }
-            else -> b.setNavigationInfo(idleInfo())
+            else -> idleInfo()?.let { b.setNavigationInfo(it) }   // no card without V2X: keep the map free
         }
         return b.build()
     }
 
-    /** Idle card: summary of the live V2X picture. */
-    private fun idleInfo(): MessageInfo {
+    /**
+     * Idle card: summary of the live V2X picture. Null while no V2X data arrives — the host draws
+     * this card large, so the "connect the ESP32" hint lives in the small map chip instead.
+     */
+    private fun idleInfo(): MessageInfo? {
         val snap = org.opentrafficmap.receiver.V2xHub.snapshot()
         val live = snap.lastFrameMs > 0 && System.currentTimeMillis() - snap.lastFrameMs < 15_000
+        if (!live) return null
         val de = nav.text.german
-        val title = if (live) "V2X live · ${snap.framesLastMinute}/min" else if (de) "Kein V2X-Empfang" else "No V2X data"
+        val title = "V2X live · ${snap.framesLastMinute}/min"
         val body = buildString {
-            if (live) {
-                append(if (de) "${snap.vehicles.size} Fahrzeuge · ${snap.signals.size} Ampeln · ${snap.hazards.size} Warnungen"
-                       else "${snap.vehicles.size} vehicles · ${snap.signals.size} signals · ${snap.hazards.size} hazards")
-                nav.ahead?.signal?.let { append("\n").append(signalText(it)) }
-            } else append(if (de) "ESP32-C5 in der V2X2MAP-App am Telefon verbinden (Bluetooth)"
-                          else "Connect the ESP32-C5 in the V2X2MAP phone app (Bluetooth)")
+            append(if (de) "${snap.vehicles.size} Fahrzeuge · ${snap.signals.size} Ampeln · ${snap.hazards.size} Warnungen"
+                   else "${snap.vehicles.size} vehicles · ${snap.signals.size} signals · ${snap.hazards.size} hazards")
+            nav.ahead?.signal?.let { append("\n").append(signalText(it)) }
         }
         val img = nav.ahead?.signal?.let { CarIcons.signalIcon(it.signal.phase) }
         return MessageInfo.Builder(title).setText(body).apply { img?.let { setImage(it) } }.build()

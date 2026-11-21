@@ -405,7 +405,8 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
 
         // V2X status chip, bottom-left of the visible area
         val live = st.v2x.lastFrameMs > 0 && System.currentTimeMillis() - st.v2x.lastFrameMs < 15_000
-        val chip = "V2X ${if (live) "●" else "○"}  ${st.v2x.vehicles.size}🚗  ${st.v2x.signals.size}🚦  ${st.v2x.hazards.size}⚠"
+        val chip = if (live) "V2X ●  ${st.v2x.vehicles.size}🚗  ${st.v2x.signals.size}🚦  ${st.v2x.hazards.size}⚠"
+                   else "V2X ○  " + if (st.text.german) "ESP32 am Handy verbinden" else "Connect ESP32 on phone"
         textPaint.textSize = 12f * d
         val cw = textPaint.measureText(chip) + 20f * d
         val chipBox = RectF(area.left + margin, area.bottom - margin - 28f * d, area.left + margin + cw, area.bottom - margin)
