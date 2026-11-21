@@ -48,6 +48,10 @@ Android Auto hides apps that weren't installed from the Play Store until you all
    navigation app is open, the request goes there instead.
 5. During guidance: **Exit** stops navigation, **Avoid** (shown when a hazard is on your route)
    reroutes around it, and the speaker icon mutes voice guidance.
+6. **Speed limit:** during guidance a round sign (bottom left) shows the posted limit at your
+   position. More than 5 km/h over it (5 % above 100 km/h), the sign flashes red and your current
+   speed is shown next to it. The limits come from OpenStreetMap via Valhalla (one extra request
+   per route); roads without a tagged limit, and unlimited motorway sections, show no sign.
 
 ### Set the destination from the phone
 
@@ -103,6 +107,10 @@ cancellation flag. `ItsG5Decoder.kt`, `Frame.kt` and `FrameReader.kt` carry that
 updated too.
 
 ## Known limitations (read before trusting it)
+
+* **Speed limits are OSM data, not sign recognition.** Temporary limits (roadworks, variable
+  motorway signs, school zones by time) are missing, and some roads have no limit tagged. Shown
+  only during guidance and while on the route.
 
 * **Which signal phase?** The existing `SpatTemParser` reports the phase of the *first* signal
   group of the intersection. That is not necessarily your lane or direction. Matching your lane

@@ -94,11 +94,21 @@ class RoutingClient(
         return parsePhoton(httpGet(url))
     }
 
-    private fun httpGet(url: String): String {
+    /** Posted speed limits along [route] (Valhalla trace_attributes on the route's own shape). */
+    fun speedLimits(route: Route): SpeedLimits =
+        SpeedLimits.parse(httpGet("$valhallaBase/trace_attributes", body = SpeedLimits.requestBody(route)), route)
+
+    /** GET [url], or POST [body] as JSON when given. */
+    private fun httpGet(url: String, body: String? = null): String {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000; c.readTimeout = 15_000
         c.setRequestProperty("User-Agent", userAgent)
         c.setRequestProperty("Accept", "application/json")
+        if (body != null) {
+            c.requestMethod = "POST"; c.doOutput = true
+            c.setRequestProperty("Content-Type", "application/json")
+            c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        }
         try {
             val code = c.responseCode
             val stream = if (code in 200..299) c.inputStream else c.errorStream

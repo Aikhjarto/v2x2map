@@ -58,6 +58,11 @@ class NavController(
     var muted = CarPrefs.muted(ctx); private set
     var simulating = false; private set
     val navigating get() = route != null
+    /** Posted limit at the current position (OSM via Valhalla), null if unknown. */
+    var speedLimitKph: Int? = null; private set
+    var speeding = false; private set
+    private var speedLimits: SpeedLimits? = null
+    private val speedWarning = SpeedWarning()
     private val avoid = mutableListOf<LatLon>()
     private val alerted = HashSet<String>()
     private var lastReroute = 0L
@@ -140,6 +145,7 @@ class NavController(
                 result.onSuccess { r ->
                     val wasNavigating = route != null
                     route = r; engine = NavigationEngine(r); guidance.reset()
+                    fetchSpeedLimits(r)
                     if (!wasNavigating) beginNavigationSession()
                     if (isReroute) say(text.rerouting)
                     pos?.let { onFix(it, heading, speedMps, accuracy) }
@@ -152,6 +158,15 @@ class NavController(
         }
     }
 
+    /** Loads speed limits for [r] in the background; the sign stays hidden if this fails. */
+    private fun fetchSpeedLimits(r: Route) {
+        speedLimits = null; speedLimitKph = null
+        io.execute {
+            val sl = runCatching { routing.speedLimits(r) }.getOrNull()
+            main.post { if (route === r) speedLimits = sl }
+        }
+    }
+
     private fun beginNavigationSession() {
         try { navManager.navigationStarted() } catch (_: Exception) {}
         NavForegroundService.start(ctx)
@@ -160,6 +175,7 @@ class NavController(
     fun stopNavigation() {
         val was = route != null
         route = null; engine = null; navState = null; destination = null; loading = false
+        speedLimits = null; speedLimitKph = null; speeding = false; speedWarning.reset()
         stopSimulation()
         if (was) {
             try { navManager.navigationEnded() } catch (_: Exception) {}
@@ -189,6 +205,8 @@ class NavController(
         if (eng != null && r != null) {
             val st = eng.update(p, acc, heading, speed)
             navState = st
+            speedLimitKph = if (st.offRoute) null else speedLimits?.at(st.distAlong)
+            speeding = speedWarning.update(speed * 3.6, speedLimitKph)
             if (st.arrived) {
                 say(text.arrived); toast(text.arrived)
                 stopNavigation(); return
@@ -221,6 +239,7 @@ class NavController(
             pos = pos, headingDeg = heading, speedMps = speedMps,
             route = route, distAlong = navState?.distAlong ?: 0.0,
             v2x = V2xHub.snapshot(), ahead = ahead, navigating = navigating, text = text,
+            speedLimitKph = speedLimitKph, speeding = speeding,
         )
         renderer.requestFrame()
     }

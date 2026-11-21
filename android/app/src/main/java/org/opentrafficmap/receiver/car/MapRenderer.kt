@@ -22,6 +22,8 @@ data class RenderState(
     val ahead: V2xAhead?,
     val navigating: Boolean,
     val text: NavText,
+    val speedLimitKph: Int? = null,
+    val speeding: Boolean = false,
 )
 
 /**
@@ -411,5 +413,34 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         c.drawRoundRect(chipBox, 14f * d, 14f * d, fill)
         textPaint.color = if (live) 0xFF00C853.toInt() else if (dark) 0xFFBDBDBD.toInt() else 0xFF616161.toInt()
         c.drawText(chip, chipBox.centerX(), chipBox.centerY() + 4f * d, textPaint)
+
+        st.speedLimitKph?.let { drawSpeedLimit(c, it, st, area.left + margin, chipBox.top - margin, d) }
+    }
+
+    /**
+     * Round speed-limit sign above the V2X chip ([left], [bottom] = its lower-left corner).
+     * While speeding, the sign flashes red and the current speed is shown next to it.
+     */
+    private fun drawSpeedLimit(c: Canvas, limit: Int, st: RenderState, left: Float, bottom: Float, d: Float) {
+        val r = 26f * d
+        val cx = left + r; val cy = bottom - r
+        val flashOn = st.speeding && (SystemClock.uptimeMillis() / 400) % 2 == 0L
+        fill.color = if (flashOn) 0xFFD50000.toInt() else Color.WHITE
+        c.drawCircle(cx, cy, r, fill)
+        stroke.color = 0xFFD50000.toInt(); stroke.strokeWidth = 0.2f * r
+        c.drawCircle(cx, cy, r - stroke.strokeWidth / 2, stroke)
+        textPaint.color = if (flashOn) Color.WHITE else Color.BLACK
+        textPaint.textSize = if (limit >= 100) 0.72f * r else 0.9f * r
+        c.drawText(limit.toString(), cx, cy + textPaint.textSize * 0.36f, textPaint)
+
+        if (st.speeding) {
+            val kmh = (st.speedMps * 3.6).toInt().toString()
+            textPaint.textSize = 18f * d
+            val w = textPaint.measureText(kmh) + 16f * d
+            val box = RectF(cx + r + 8f * d, cy - 15f * d, cx + r + 8f * d + w, cy + 15f * d)
+            fill.color = 0xEED50000.toInt(); c.drawRoundRect(box, 10f * d, 10f * d, fill)
+            textPaint.color = Color.WHITE
+            c.drawText(kmh, box.centerX(), box.centerY() + 6f * d, textPaint)
+        }
     }
 }
