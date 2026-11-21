@@ -10,6 +10,8 @@ import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import org.opentrafficmap.receiver.nav.*
+// Explicit: androidx.car.app.model.* also has a `Place`, which would make the star imports ambiguous.
+import org.opentrafficmap.receiver.nav.Place
 
 /** The main map screen: idle map + V2X, or turn-by-turn navigation. */
 class NavScreen(carContext: CarContext) : Screen(carContext) {
