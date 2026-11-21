@@ -74,7 +74,7 @@
 
         <service
             android:name=".ReceiverForegroundService"
-            android:foregroundServiceType="connectedDevice"
+            android:foregroundServiceType="connectedDevice|location"
             android:exported="false"
             tools:targetApi="34"/>
 

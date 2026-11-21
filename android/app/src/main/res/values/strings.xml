@@ -243,6 +243,14 @@
     <string name="osmand_status_connecting">Connecting to OsmAnd…</string>
     <string name="osmand_status_not_enabled">OsmAnd rejects V2X2MAP: enable it in OsmAnd → Menu → Plugins (connected apps). Newer OsmAnd: tap here to grant access.</string>
     <string name="osmand_status_active">Active — V2X layer and widget are shown in OsmAnd (layer can be toggled in OsmAnd → Configure map).</string>
+    <string name="osmand_w_status_title">V2X2MAP status</string>
+    <string name="osmand_w_light_title">V2X next traffic light</string>
+    <string name="osmand_w_speed_title">V2X speed limit</string>
+    <string name="osmand_w_light">light</string>
+    <string name="osmand_w_red">red</string>
+    <string name="osmand_w_amber">amber</string>
+    <string name="osmand_w_green">green</string>
+    <string name="osmand_w_no_position">no position</string>
     <string name="notif_stop">Stop</string>
     <string name="share_target_label">Navigate with V2X2MAP</string>
     <string name="share_dest_resolving">V2X2MAP: looking up destination…</string>

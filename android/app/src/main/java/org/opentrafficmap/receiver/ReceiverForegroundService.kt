@@ -48,9 +48,19 @@ class ReceiverForegroundService : Service() {
         // is granted or a USB device is attached with permission. Starting it earlier threw a
         // SecurityException and, with START_STICKY, crash-looped the whole app.
         if (!mayRunAsConnectedDevice(this)) { stopSelf(); return START_NOT_STICKY }
+        // Also a "location" service when location permission is granted, so the OsmAnd add-on keeps
+        // getting GPS fixes while OsmAnd is in front. Falls back to connectedDevice only.
+        val notif = buildNotification(getString(R.string.notif_running))
+        val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
+        val withLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && hasLocationPermission())
+            base or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else base
         try {
-            ServiceCompat.startForeground(this, NOTIF_ID, buildNotification(getString(R.string.notif_running)),
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
+            try {
+                ServiceCompat.startForeground(this, NOTIF_ID, notif, withLocation)
+            } catch (e: SecurityException) {
+                if (withLocation == base) throw e
+                ServiceCompat.startForeground(this, NOTIF_ID, notif, base)
+            }
         } catch (e: Exception) {   // SecurityException / ForegroundServiceStartNotAllowedException
             stopSelf(); return START_NOT_STICKY
         }
@@ -76,6 +86,10 @@ class ReceiverForegroundService : Service() {
             handler.postDelayed(this, 5_000)
         }
     }
+
+    private fun hasLocationPermission() =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     override fun onDestroy() {
         handler.removeCallbacks(statsTick)

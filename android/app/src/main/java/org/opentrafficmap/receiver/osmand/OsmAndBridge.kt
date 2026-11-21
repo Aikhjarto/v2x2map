@@ -29,8 +29,18 @@ import net.osmand.aidlapi.mapwidget.AMapWidget
 import net.osmand.aidlapi.mapwidget.AddMapWidgetParams
 import net.osmand.aidlapi.mapwidget.RemoveMapWidgetParams
 import net.osmand.aidlapi.mapwidget.UpdateMapWidgetParams
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import org.opentrafficmap.receiver.MainActivity
+import org.opentrafficmap.receiver.R
 import org.opentrafficmap.receiver.V2xHub
+import org.opentrafficmap.receiver.nav.IvimSpeed
+import org.opentrafficmap.receiver.nav.LatLon
+import org.opentrafficmap.receiver.nav.V2xAnalyzer
 import org.opentrafficmap.receiver.nav.SignalPhase
 import org.opentrafficmap.receiver.nav.V2xHazard
 import org.opentrafficmap.receiver.nav.V2xSignal
@@ -58,6 +68,9 @@ object OsmAndBridge {
     private val PACKAGES = listOf("net.osmand.plus", "net.osmand", "net.osmand.dev")
     private const val LAYER_ID = "v2x2map"
     private const val WIDGET_ID = "v2x2map_status"
+    private const val WIDGET_LIGHT = "v2x2map_light"
+    private const val WIDGET_SPEED = "v2x2map_speed"
+    private val WIDGETS = listOf(WIDGET_ID, WIDGET_LIGHT, WIDGET_SPEED)
     private const val SYNC_MS = 1000L
     private const val RETRY_MS = 10_000L
 
@@ -102,10 +115,38 @@ object OsmAndBridge {
         if (!bound) setStatus(Status.NO_OSMAND)
     }
 
+    // ---- own position (for the next-light and speed-limit widgets) ------------------------------
+
+    @Volatile private var pos: LatLon? = null
+    @Volatile private var heading: Double? = null
+    private var fused: FusedLocationProviderClient? = null
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(r: LocationResult) {
+            val l = r.lastLocation ?: return
+            pos = LatLon(l.latitude, l.longitude)
+            if (l.hasBearing() && l.hasSpeed() && l.speed > 1.5f) heading = l.bearing.toDouble()
+        }
+    }
+
+    private fun startLocation(ctx: Context) {
+        if (fused != null) return
+        try {
+            val f = LocationServices.getFusedLocationProviderClient(ctx)
+            f.requestLocationUpdates(LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L).build(),
+                locationCallback, handler.looper)
+            fused = f
+        } catch (e: SecurityException) { Log.w(TAG, "no location permission", e) }
+    }
+
+    private fun stopLocation() {
+        fused?.removeLocationUpdates(locationCallback); fused = null; pos = null; heading = null
+    }
+
     fun stop() = handler.post {
         handler.removeCallbacks(syncTask); handler.removeCallbacks(setupTask)
+        stopLocation()
         api?.let { a ->
-            runCatching { a.removeMapWidget(RemoveMapWidgetParams(WIDGET_ID)) }
+            WIDGETS.forEach { id -> runCatching { a.removeMapWidget(RemoveMapWidgetParams(id)) } }
             runCatching { a.removeMapLayer(RemoveMapLayerParams(LAYER_ID)) }
         }
         if (bound) runCatching { app?.unbindService(connection) }
@@ -145,8 +186,10 @@ object OsmAndBridge {
                     handler.postDelayed(this, RETRY_MS)
                     return
                 }
-                runCatching { a.removeMapWidget(RemoveMapWidgetParams(WIDGET_ID)) }
-                runCatching { a.addMapWidget(AddMapWidgetParams(widget(ctx, "—"))) }
+                WIDGETS.forEach { id -> runCatching { a.removeMapWidget(RemoveMapWidgetParams(id)) } }
+                lastWidget.clear()
+                widgets(ctx).forEach { w -> runCatching { a.addMapWidget(AddMapWidgetParams(w)) }; lastWidget[w.id] = key(w) }
+                startLocation(ctx)
                 layerReady = true; sent.clear()
                 setStatus(Status.ACTIVE)
                 handler.removeCallbacks(syncTask); handler.post(syncTask)
@@ -157,7 +200,8 @@ object OsmAndBridge {
         }
     }
 
-    private var lastWidgetText = ""
+    private val lastWidget = HashMap<String, String>()
+    private fun key(w: AMapWidget) = "${w.text}|${w.description}|${w.lightIconUri}"
 
     private val syncTask: Runnable = object : Runnable {
         override fun run() {
@@ -196,19 +240,47 @@ object OsmAndBridge {
             sent.remove(id)
         }
 
-        val live = snap.lastFrameMs > 0 && System.currentTimeMillis() - snap.lastFrameMs < 15_000
-        val text = if (live) "${snap.vehicles.size}/${snap.signals.size}/${snap.hazards.size}" else "—"
-        if (text != lastWidgetText) {
-            app?.let { runCatching { a.updateMapWidget(UpdateMapWidgetParams(widget(it, text))) } }
-            lastWidgetText = text
+        val ctx = app ?: return
+        for (w in widgets(ctx, snap)) {
+            val k = key(w)
+            if (lastWidget[w.id] != k) { runCatching { a.updateMapWidget(UpdateMapWidgetParams(w)) }; lastWidget[w.id] = k }
         }
     }
 
-    private fun widget(ctx: Context, text: String): AMapWidget {
-        val open = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
-            ?: Intent(ctx, MainActivity::class.java)
-        return AMapWidget(WIDGET_ID, "ic_action_signal", "V2X2MAP", "ic_action_signal", "ic_action_signal",
-            text, "V2X 🚗/🚦/⚠", 0, open)
+    /**
+     * Three widgets: V2X status (vehicles/lights/hazards), next traffic light in the driving
+     * direction (distance, icon in its colour) and the IVIM road-sign speed limit.
+     */
+    private fun widgets(ctx: Context, snap: org.opentrafficmap.receiver.nav.V2xSnapshot = V2xHub.snapshot()): List<AMapWidget> {
+        val open = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent(ctx, MainActivity::class.java)
+        val live = snap.lastFrameMs > 0 && System.currentTimeMillis() - snap.lastFrameMs < 15_000
+        val any = snap.vehicles.isNotEmpty() || snap.signals.isNotEmpty() || snap.hazards.isNotEmpty()
+        val status = if (live || any) "${snap.vehicles.size}/${snap.signals.size}/${snap.hazards.size}" else "—"
+
+        val p = pos
+        val ahead = p?.let { V2xAnalyzer.analyze(snap, it, heading, null).signal }
+        val (lightText, lightDesc, lightIcon) = when {
+            p == null -> Triple("—", ctx.getString(R.string.osmand_w_no_position), "light_unknown")
+            ahead == null -> Triple("—", ctx.getString(R.string.osmand_w_light), "light_unknown")
+            else -> Triple("%d m".format(Locale.ROOT, ahead.distM.toInt()), when (ahead.signal.phase) {
+                SignalPhase.RED -> ctx.getString(R.string.osmand_w_red); SignalPhase.YELLOW -> ctx.getString(R.string.osmand_w_amber)
+                SignalPhase.GREEN -> ctx.getString(R.string.osmand_w_green); SignalPhase.UNKNOWN -> ctx.getString(R.string.osmand_w_light)
+            }, when (ahead.signal.phase) {
+                SignalPhase.RED -> "light_red"; SignalPhase.YELLOW -> "light_yellow"
+                SignalPhase.GREEN -> "light_green"; SignalPhase.UNKNOWN -> "light_unknown"
+            })
+        }
+        val limit = p?.let { IvimSpeed.limitAt(V2xHub.speedZones(), it, heading) }
+        val speedText = limit?.let { it.limitKph.toString() + if (it.lanesDiffer) "*" else "" } ?: "—"
+
+        fun w(id: String, title: String, text: String, desc: String, icon: String, order: Int) =
+            AMapWidget(id, "ic_action_signal", title, "ic_action_signal", "ic_action_signal", text, desc, order, open).apply {
+                icons[icon]?.toString()?.let { setIconUris(it, it, it) }
+            }
+        return listOf(
+            w(WIDGET_ID, ctx.getString(R.string.osmand_w_status_title), status, "V2X", "v2x", 0),
+            w(WIDGET_LIGHT, ctx.getString(R.string.osmand_w_light_title), lightText, lightDesc, lightIcon, 1),
+            w(WIDGET_SPEED, ctx.getString(R.string.osmand_w_speed_title), speedText, "km/h V2X", "speed", 2))
     }
 
     // ---- points ---------------------------------------------------------------------------------
@@ -277,7 +349,8 @@ internal object OsmAndIcons {
             "rsu" to { c -> rsu(c) },
             "light_red" to { c -> light(c, 0) }, "light_yellow" to { c -> light(c, 1) },
             "light_green" to { c -> light(c, 2) }, "light_unknown" to { c -> light(c, -1) },
-            "hazard" to { c -> hazard(c) })
+            "hazard" to { c -> hazard(c) },
+            "v2x" to { c -> v2x(c) }, "speed" to { c -> speedSign(c) })
         return draw.mapValues { (name, fn) ->
             val f = File(dir, "$name.png")
             if (!f.exists()) {
@@ -311,6 +384,23 @@ internal object OsmAndIcons {
             fill.color = if (i == lit) colors[i] else 0xFF424242.toInt()
             c.drawCircle(SIZE / 2f, SIZE * (0.2f + 0.3f * i), SIZE * 0.11f, fill)
         }
+    }
+
+    /** Radio waves around a dot: the V2X status widget. */
+    private fun v2x(c: Canvas) {
+        val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 6f; color = 0xFF00897B.toInt(); strokeCap = Paint.Cap.ROUND }
+        fill.color = 0xFF00897B.toInt(); c.drawCircle(SIZE / 2f, SIZE * 0.62f, SIZE * 0.09f, fill)
+        for (r in listOf(0.22f, 0.36f)) {
+            val o = RectF(SIZE / 2f - SIZE * r, SIZE * 0.62f - SIZE * r, SIZE / 2f + SIZE * r, SIZE * 0.62f + SIZE * r)
+            c.drawArc(o, 220f, 100f, false, arc)
+        }
+    }
+
+    /** Round speed-limit sign without a number (the number is the widget text). */
+    private fun speedSign(c: Canvas) {
+        fill.color = Color.WHITE; c.drawCircle(SIZE / 2f, SIZE / 2f, SIZE * 0.44f, fill)
+        val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = SIZE * 0.12f; color = 0xFFD50000.toInt() }
+        c.drawCircle(SIZE / 2f, SIZE / 2f, SIZE * 0.38f, ring)
     }
 
     private fun hazard(c: Canvas) {

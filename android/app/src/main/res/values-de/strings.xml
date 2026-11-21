@@ -229,6 +229,14 @@
     <string name="osmand_status_connecting">Verbinde mit OsmAnd…</string>
     <string name="osmand_status_not_enabled">OsmAnd lehnt V2X2MAP ab: in OsmAnd → Menü → Plugins (verbundene Apps) einschalten. Neueres OsmAnd: hier tippen, um den Zugriff zu erlauben.</string>
     <string name="osmand_status_active">Aktiv – V2X-Ebene und Widget werden in OsmAnd angezeigt (Ebene in OsmAnd → Karte konfigurieren ein-/ausschaltbar).</string>
+    <string name="osmand_w_status_title">V2X2MAP-Status</string>
+    <string name="osmand_w_light_title">V2X nächste Ampel</string>
+    <string name="osmand_w_speed_title">V2X Tempolimit</string>
+    <string name="osmand_w_light">Ampel</string>
+    <string name="osmand_w_red">rot</string>
+    <string name="osmand_w_amber">gelb</string>
+    <string name="osmand_w_green">grün</string>
+    <string name="osmand_w_no_position">keine Position</string>
     <string name="notif_stop">Beenden</string>
     <string name="share_target_label">Mit V2X2MAP navigieren</string>
     <string name="share_dest_resolving">V2X2MAP: Ziel wird gesucht…</string>
