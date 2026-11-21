@@ -48,7 +48,9 @@
 
     <string name="follow_section">Auto-follow</string>
     <string name="follow_label">Centre map automatically while moving</string>
-    <string name="follow_hint">Map pans to follow your position. Zoom level stays as set by you.</string>
+    <string name="follow_hint">Map pans to follow your position. Zoom level stays as set by you unless auto-zoom is on.</string>
+    <string name="auto_zoom_label">Auto-zoom by speed</string>
+    <string name="auto_zoom_hint">While the map follows you: close in town, farther out on the motorway. Also applies to the Android Auto map without a route (with a route it always zooms by speed).</string>
 
     <string name="audio_section">Audio feedback</string>
     <string name="audio_label">Geiger-counter mode</string>

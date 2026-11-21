@@ -63,6 +63,8 @@ class SettingsActivity : AppCompatActivity() {
             Prefs.setFollowEnabled(this, c)
             SettingsBus.followChanged(c)
         }
+        binding.swAutoZoom.isChecked = Prefs.autoZoom(this)
+        binding.swAutoZoom.setOnCheckedChangeListener { _, c -> Prefs.setAutoZoom(this, c) }
 
         // --- Geiger-counter audio -------------------------------------------
         binding.swAudio.isChecked = Prefs.audioFeedback(this)

@@ -1,5 +1,7 @@
 package org.opentrafficmap.receiver
 
+import org.opentrafficmap.receiver.nav.SpeedZoom
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -556,9 +558,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Pan only — zoom is never changed here. */
+    /** Pans to the position; with auto-zoom also sets the zoom level for the current speed. */
     private fun followLocation(loc: Location) {
-        binding.map.controller.animateTo(GeoPoint(loc.latitude, loc.longitude))
+        val p = GeoPoint(loc.latitude, loc.longitude)
+        if (Prefs.autoZoom(this)) {
+            val target = SpeedZoom.zoomFor(if (loc.hasSpeed()) loc.speed.toDouble() else 0.0)
+            // only noticeable changes, so the map doesn't pump with small speed variations
+            if (Math.abs(target - binding.map.zoomLevelDouble) >= 0.3) {
+                binding.map.controller.animateTo(p, target, 800L)
+                return
+            }
+        }
+        binding.map.controller.animateTo(p)
     }
 
     // -------------------------------------------------------- Recording

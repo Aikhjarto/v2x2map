@@ -12,6 +12,7 @@ object Prefs {
 
     private const val KEY_LEGAL_ACCEPTED = "legal_accepted"
     private const val KEY_FOLLOW_ENABLED = "follow_enabled"
+    private const val KEY_AUTO_ZOOM      = "auto_zoom"
     private const val KEY_MQTT_ENABLED   = "mqtt_enabled"
     private const val KEY_RECORDING      = "recording_enabled"
     private const val KEY_MQTT_BROKER    = "mqtt_broker"   // legacy single-broker key
@@ -42,6 +43,13 @@ object Prefs {
 
     fun setFollowEnabled(ctx: Context, on: Boolean) =
         prefs(ctx).edit { putBoolean(KEY_FOLLOW_ENABLED, on) }
+
+    /** Zoom the map by driving speed (phone map while following; car map also without a route). */
+    fun autoZoom(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(KEY_AUTO_ZOOM, false)
+
+    fun setAutoZoom(ctx: Context, on: Boolean) =
+        prefs(ctx).edit { putBoolean(KEY_AUTO_ZOOM, on) }
 
     fun mqttEnabled(ctx: Context): Boolean =
         prefs(ctx).getBoolean(KEY_MQTT_ENABLED, false)

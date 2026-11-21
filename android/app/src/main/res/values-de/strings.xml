@@ -47,7 +47,9 @@
     <!-- Auto-follow -->
     <string name="follow_section">Auto-Follow</string>
     <string name="follow_label">Karte beim Fahren automatisch zentrieren</string>
-    <string name="follow_hint">Karte folgt deiner Position. Zoomstufe bleibt unverändert.</string>
+    <string name="follow_hint">Karte folgt deiner Position. Zoomstufe bleibt unverändert, außer Auto-Zoom ist an.</string>
+    <string name="auto_zoom_label">Auto-Zoom nach Geschwindigkeit</string>
+    <string name="auto_zoom_hint">Solange die Karte dir folgt: nah im Ort, weiter weg auf der Autobahn. Gilt auch für die Android-Auto-Karte ohne Route (mit Route zoomt sie immer nach Geschwindigkeit).</string>
 
     <!-- Audio -->
     <string name="audio_section">Audio-Feedback</string>

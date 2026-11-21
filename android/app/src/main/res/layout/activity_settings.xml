@@ -59,6 +59,16 @@
                 style="@style/Section.Hint"
                 android:text="@string/follow_hint"/>
 
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/swAutoZoom"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/auto_zoom_label"/>
+
+            <TextView
+                style="@style/Section.Hint"
+                android:text="@string/auto_zoom_hint"/>
+
             <!-- Geiger-counter audio -->
             <TextView
                 style="@style/Section.Header"

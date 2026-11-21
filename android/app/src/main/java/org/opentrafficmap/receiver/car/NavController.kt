@@ -254,6 +254,7 @@ class NavController(
             route = route, distAlong = navState?.distAlong ?: 0.0,
             v2x = V2xHub.snapshot(), ahead = ahead, navigating = navigating, text = text,
             speedLimitKph = speedLimitKph, speeding = speeding, speedLimitV2x = speedLimitFromV2x, linkHint = linkHint(),
+            autoZoom = org.opentrafficmap.receiver.Prefs.autoZoom(ctx),
         )
         renderer.requestFrame()
     }

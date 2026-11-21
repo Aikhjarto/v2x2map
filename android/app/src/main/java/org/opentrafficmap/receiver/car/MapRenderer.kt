@@ -26,6 +26,8 @@ data class RenderState(
     val speeding: Boolean = false,
     /** Limit comes from an IVIM road sign (shown with a small "V2X" label). */
     val speedLimitV2x: Boolean = false,
+    /** Phone setting "auto-zoom by speed" (applies without a route; with a route it always zooms). */
+    val autoZoom: Boolean = false,
     /** Status of the ESP32 link for the V2X chip while no V2X data arrives. */
     val linkHint: String? = null,
 )
@@ -201,13 +203,8 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
 
         // --- camera
         val speed = st?.speedMps ?: 0.0
-        val autoZoom = when {
-            st?.navigating != true -> 16.0
-            speed < 9 -> 17.2
-            speed < 17 -> 16.4
-            speed < 25 -> 15.6
-            else -> 14.8
-        }
+        // by speed while navigating, and also without a route when the auto-zoom setting is on
+        val autoZoom = if (st?.navigating == true || st?.autoZoom == true) SpeedZoom.zoomFor(speed) else 16.0
         camZoom += ((autoZoom + userZoomDelta).coerceIn(4.0, 19.0) - camZoom) * 0.15
         st?.headingDeg?.let { h -> if (speed > 1.5 || smoothHeading == 0.0) smoothHeading = Geo.normDeg(smoothHeading + Geo.angleDiff(h, smoothHeading) * 0.25) }
         val targetBearing = if (following && st?.navigating == true) smoothHeading else if (following) smoothHeading else camBearing
