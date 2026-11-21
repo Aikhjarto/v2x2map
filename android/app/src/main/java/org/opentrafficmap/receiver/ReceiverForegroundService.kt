@@ -25,6 +25,13 @@ class ReceiverForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            // "Stop" in the notification: end the link, recording and MQTT without opening the app
+            FramePipeline.stopAll()
+            BtSession.stop()
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, getString(R.string.app_name), NotificationManager.IMPORTANCE_LOW)
@@ -55,13 +62,23 @@ class ReceiverForegroundService : Service() {
         }
 
         instance = this
+        handler.removeCallbacks(statsTick); handler.post(statsTick)
         // Not sticky: after the process dies there is no BT/USB connection left to keep alive.
         return START_NOT_STICKY
     }
 
 
 
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val statsTick = object : Runnable {
+        override fun run() {
+            updateStats(FramePipeline.totalFrames.get().toInt(), FramePipeline.ratePerMinute())
+            handler.postDelayed(this, 5_000)
+        }
+    }
+
     override fun onDestroy() {
+        handler.removeCallbacks(statsTick)
         instance = null
         try { wakeLock?.release() } catch (_: Exception) {}
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -79,14 +96,28 @@ class ReceiverForegroundService : Service() {
             .setContentText(text)
             .setOngoing(true)
             .setContentIntent(tapIntent)
+            .addAction(R.drawable.ic_notification, getString(R.string.notif_stop), PendingIntent.getService(
+                this, 1, Intent(this, ReceiverForegroundService::class.java).setAction(ACTION_STOP),
+                PendingIntent.FLAG_IMMUTABLE))
             .build()
 
     companion object {
         private const val CHANNEL_ID     = "v2x2map_receiver"
         private const val NOTIF_ID       = 1
         private const val MAX_SESSION_MS = 8L * 60 * 60 * 1000
+        private const val ACTION_STOP    = "org.opentrafficmap.receiver.STOP"
 
         @Volatile var instance: ReceiverForegroundService? = null
+
+        /** Starts the service if Android allows it right now; silently does nothing otherwise. */
+        fun start(ctx: Context) {
+            if (!mayRunAsConnectedDevice(ctx)) return
+            val intent = Intent(ctx, ReceiverForegroundService::class.java)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(intent)
+                else ctx.startService(intent)
+            } catch (_: Exception) { /* e.g. not allowed from the background — the link still works */ }
+        }
 
         /** Whether Android allows the "connectedDevice" foreground service right now (Android 14+ rule). */
         fun mayRunAsConnectedDevice(ctx: Context): Boolean {

@@ -28,6 +28,7 @@ class FrameRecorder(private val context: Context) {
 
     val isRecording: Boolean get() = stream != null
 
+    @Synchronized
     fun start(): File? {
         if (stream != null) return file
         val dir = context.getExternalFilesDir(null) ?: context.filesDir
@@ -49,6 +50,7 @@ class FrameRecorder(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun stop(): File? {
         val s = stream ?: return null
         return try {

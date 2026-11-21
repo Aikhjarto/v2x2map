@@ -8,7 +8,10 @@ import androidx.car.app.model.*
 import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import org.opentrafficmap.receiver.BluetoothController
+import org.opentrafficmap.receiver.BtSession
 import org.opentrafficmap.receiver.nav.*
 // Explicit: androidx.car.app.model.* also has a `Place`, which would make the star imports ambiguous.
 import org.opentrafficmap.receiver.nav.Place
@@ -21,6 +24,10 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
     private var lastInvalidate = 0L
     private var inPanMode = false
 
+    private val btListener = BtSession.StateListener { _, _ ->
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.CREATED)) invalidate()
+    }
+
     init {
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(renderer)
         val main = android.os.Handler(android.os.Looper.getMainLooper())
@@ -28,8 +35,25 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) { nav.start() }
             override fun onStop(owner: LifecycleOwner) { if (!nav.navigating) nav.stop() }
-            override fun onDestroy(owner: LifecycleOwner) { nav.destroy() }
+            override fun onDestroy(owner: LifecycleOwner) {
+                BtSession.removeStateListener(btListener)
+                BtSession.release(BtSession.HOLDER_CAR)   // keeps running if the phone app still uses it
+                nav.destroy()
+            }
         })
+        BtSession.addStateListener(btListener)
+        // Auto-connect to the ESP32 when the car screen opens (permission prompts only via the V2X button).
+        if (BtSession.hasPermissions(carContext)) BtSession.acquire(carContext, BtSession.HOLDER_CAR)
+    }
+
+    /** V2X button: connect (asking for Bluetooth permission on the phone if needed) or disconnect. */
+    private fun toggleV2x() {
+        if (BtSession.isActive) { BtSession.stop(); return }
+        if (BtSession.hasPermissions(carContext)) { BtSession.acquire(carContext, BtSession.HOLDER_CAR); return }
+        carContext.requestPermissions(BluetoothController.runtimePermissions().toList()) { granted, _ ->
+            if (granted.size == BluetoothController.runtimePermissions().size)
+                BtSession.acquire(carContext, BtSession.HOLDER_CAR)
+        }
     }
 
     /** NavigationTemplate refreshes are cheap but the host still rate-limits; ~1/s is plenty. */
@@ -101,6 +125,12 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
             s.addAction(Action.Builder().setIcon(CarIcons.search(carContext))
                 .setTitle(if (de) "Ziel" else "Search")
                 .setOnClickListener { openSearch() }.build())
+            val v2xTitle = when {
+                !BtSession.isActive -> if (de) "V2X verbinden" else "Connect V2X"
+                BtSession.state == BluetoothController.State.CONNECTED -> if (de) "V2X trennen" else "Disconnect V2X"
+                else -> if (de) "Suche abbrechen" else "Stop search"
+            }
+            s.addAction(Action.Builder().setTitle(v2xTitle).setOnClickListener { toggleV2x() }.build())
         }
         s.addAction(Action.Builder().setIcon(if (nav.muted) CarIcons.volumeOff(carContext) else CarIcons.volumeOn(carContext))
             .setOnClickListener { nav.toggleMute() }.build())

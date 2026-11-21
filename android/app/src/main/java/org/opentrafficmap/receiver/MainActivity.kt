@@ -46,9 +46,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: FrameLogAdapter
     private val reader = FrameReader()
     private var usb: UsbSerialController? = null
-    private var bt: BluetoothController? = null
-    private val mqttBridges = mutableListOf<MqttBridge>()
-    private lateinit var recorder: FrameRecorder
     private lateinit var locationOverlay: MyLocationNewOverlay
     private lateinit var fused: FusedLocationProviderClient
     private lateinit var markers: MarkerLayer
@@ -148,7 +145,6 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        recorder = FrameRecorder(this)
         fused    = LocationServices.getFusedLocationProviderClient(this)
         followEnabled   = Prefs.followEnabled(this)
         ownTrackEnabled = Prefs.ownTrackEnabled(this)
@@ -187,7 +183,9 @@ class MainActivity : AppCompatActivity() {
 
         applyKeepScreenOn()
         wireSettingsBus()
-        if (Prefs.mqttEnabled(this) && Prefs.mqttBrokerList(this).isNotEmpty()) startMqtt()
+        BtSession.addStateListener(btStateListener)
+        FramePipeline.attachUi(this, frameListener)   // also starts MQTT if enabled
+        if (BtSession.isActive) BtSession.acquire(this, BtSession.HOLDER_PHONE)   // e.g. started by Android Auto
         if (followEnabled || ownTrackEnabled || compassMode) ensureLocation()
         mainHandler.post(rateRefresh)
         mainHandler.post(logRefresh)
@@ -219,30 +217,32 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopService(Intent(this, ReceiverForegroundService::class.java))
-        usb?.stop(); bt?.stop(); stopMqtt()
-        if (::recorder.isInitialized) recorder.stop()
+        BtSession.removeStateListener(btStateListener)
+        usb?.stop(); usb = null
+        // Recording/MQTT live in FramePipeline: they keep running while Android Auto holds the
+        // link and stop (file closed cleanly) once neither the link nor a phone UI is left.
+        FramePipeline.detachUi(frameListener)
+        BtSession.release(BtSession.HOLDER_PHONE)
+        if (!BtSession.isActive) stopService(Intent(this, ReceiverForegroundService::class.java))
         if (::locationOverlay.isInitialized) locationOverlay.disableMyLocation()
         if (::fused.isInitialized) stopLocationUpdates()
         if (::geiger.isInitialized) geiger.stop()
-        SettingsBus.liveRecorder = null
-        SettingsBus.liveBtController = null
         mainHandler.removeCallbacksAndMessages(null)
     }
 
     // ----------------------------------------------------------- Settings bus
 
     private fun wireSettingsBus() {
-        SettingsBus.liveRecorder = recorder
+        SettingsBus.liveRecorder = FramePipeline.recorder(this)
         SettingsBus.onFollowChanged = SettingsBus.OnFollowChanged { on ->
             followEnabled = on
             invalidateOptionsMenu()
             if (on || ownTrackEnabled || compassMode) ensureLocation() else stopLocationUpdates()
         }
         SettingsBus.onMqttToggle = SettingsBus.OnMqttToggle { on ->
-            stopMqtt(); if (on) startMqtt()
+            FramePipeline.stopMqtt(); if (on) FramePipeline.startMqtt(this)
         }
-        SettingsBus.onRecordingToggle = SettingsBus.OnRecordingToggle { toggleRecording() }
+        SettingsBus.onRecordingToggle = SettingsBus.OnRecordingToggle { FramePipeline.toggleRecording(this) }
         SettingsBus.onMapDownload = SettingsBus.OnMapDownload { downloadVisibleMap() }
         SettingsBus.onAudioChanged = SettingsBus.OnAudioChanged { on ->
             if (on) geiger.start() else geiger.stop()
@@ -254,7 +254,7 @@ class MainActivity : AppCompatActivity() {
         }
         SettingsBus.onCycleApply = SettingsBus.OnCycleApply { c ->
             lastCycle = c; SettingsBus.liveCycleConfig = c
-            val ok = bt?.writeConfig(c) ?: false
+            val ok = BtSession.writeConfig(c)
             toast(getString(if (ok) R.string.cycle_saved else R.string.cycle_not_connected))
         }
         SettingsBus.onKeepScreenOnChanged = SettingsBus.OnKeepScreenOnChanged { applyKeepScreenOn() }
@@ -436,15 +436,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startReceiverService() {
-        // Starting it without BT permission / USB device would crash (Android 14 FGS type rules).
-        if (!ReceiverForegroundService.mayRunAsConnectedDevice(this)) return
-        val intent = Intent(this, ReceiverForegroundService::class.java)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
-            else startService(intent)
-        } catch (_: Exception) { /* e.g. not allowed from the background — the connection still works */ }
-    }
+    private fun startReceiverService() = ReceiverForegroundService.start(this)
 
     // -------------------------------------------------------------- USB
 
@@ -476,28 +468,25 @@ class MainActivity : AppCompatActivity() {
 
     // --------------------------------------------------------------- BT
 
+    // The link itself lives in BtSession so the Android Auto screen can use and control it too.
+    private val btStateListener = BtSession.StateListener { s, i -> onBtState(s, i) }
+    private val frameListener = FramePipeline.Listener { frames -> handleFrames(frames) }
+
     private fun toggleBt() {
-        if (bt == null) {
+        if (!BtSession.isActive) {
             val missing = BluetoothController.runtimePermissions().filter {
                 ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
             }
             if (missing.isNotEmpty()) { btPermissionLauncher.launch(missing.toTypedArray()); return }
             startBt()
         } else {
-            bt?.stop(); bt = null
-            SettingsBus.liveBtController = null
-            onBtState(BluetoothController.State.IDLE, null)
+            BtSession.stop()
         }
     }
 
     private fun startBt() {
-        ensureServiceRunning()
-        bt = BluetoothController(
-            context  = this,
-            onBytes  = ::onSerialBytes,
-            onState  = ::onBtState,
-            onConfig = { lastCycle = it; SettingsBus.liveCycleConfig = it },
-        ).also { it.start(); SettingsBus.liveBtController = it }
+        ensureServiceRunning()   // asks for the notification permission if needed
+        BtSession.acquire(this, BtSession.HOLDER_PHONE)
     }
 
     private fun onBtState(state: BluetoothController.State, info: String?) = runOnUiThread {
@@ -571,13 +560,6 @@ class MainActivity : AppCompatActivity() {
 
     // -------------------------------------------------------- Recording
 
-    private fun toggleRecording(): String = if (recorder.isRecording) {
-        val stopped = recorder.stop()
-        getString(R.string.rec_stopped, recorder.frameCount, stopped?.absolutePath ?: "?")
-    } else {
-        val f = recorder.start()
-        if (f != null) getString(R.string.rec_started, f.absolutePath) else "recording start failed"
-    }
 
     // ------------------------------------------------------- Map cache
 
@@ -610,48 +592,21 @@ class MainActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------ MQTT
 
-    private fun startMqtt() {
-        stopMqtt()
-        val nodeId = Prefs.nodeId(this).trim().ifEmpty { getString(R.string.default_node_id) }
-        Prefs.mqttBrokerList(this).filter { it.isNotBlank() }.forEach { url ->
-            MqttBridge(nodeId, normaliseBroker(url.trim())).also {
-                it.start()
-                mqttBridges.add(it)
-            }
-        }
-    }
-
-    private fun stopMqtt() {
-        mqttBridges.forEach { it.stop() }
-        mqttBridges.clear()
-    }
-
-    private fun normaliseBroker(s: String): String = when {
-        s.startsWith("mqtts://") -> "ssl://" + s.removePrefix("mqtts://")
-        s.startsWith("mqtt://")  -> "tcp://" + s.removePrefix("mqtt://")
-        s.startsWith("ssl://")   -> s
-        s.startsWith("tcp://")   -> s
-        else                      -> "ssl://$s"
-    }
-
     // ---------------------------------------------------------- Frames
 
     private fun onSerialBytes(chunk: ByteArray) {
+        // USB only — Bluetooth frames arrive via BtSession. FramePipeline feeds the car screen,
+        // recording and MQTT, and hands the frames back to handleFrames() on the main thread.
         val frames = synchronized(reader) { reader.feed(chunk) }
-        if (frames.isEmpty()) return
-        runOnUiThread { handleFrames(frames) }
+        FramePipeline.onFrames(frames)
     }
 
     private fun handleFrames(frames: List<Frame>) {
-        val mqttFilter = Prefs.mqttFilterTypes(this)
         for (f in frames) {
             totalFrames++
             pendingLogFrames.add(f)          // buffered; drains in logRefresh
             markers.add(f)
-            V2xHub.ingest(f)                 // shared with the Android Auto screen
             geiger.click(f.msgType)
-            if (f.msgType.name in mqttFilter) mqttBridges.forEach { it.publish(f.payload) }
-            if (recorder.isRecording) recorder.append(f)
             rateWindow.add(System.currentTimeMillis())
 
             if (f.msgType == ItsG5Decoder.MsgType.SPATEM && f.latLon != null) {
@@ -725,7 +680,6 @@ class MainActivity : AppCompatActivity() {
             }
             binding.logStats.text = getString(R.string.log_stats, totalFrames.toInt(), rate) + suffix
             if (::markers.isInitialized) markers.prune()
-            ReceiverForegroundService.instance?.updateStats(totalFrames.toInt(), rate)
             mainHandler.postDelayed(this, 1_000)
         }
     }

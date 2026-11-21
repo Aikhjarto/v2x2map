@@ -223,6 +223,7 @@
     <string name="about_license_material">Android Material Components — Apache 2.0</string>
     <string name="about_license_flexbox">FlexboxLayout — Apache 2.0</string>
     <string name="about_license_kotlin">Kotlin Standard Library &amp; Coroutines — Apache 2.0</string>
+    <string name="notif_stop">Stop</string>
     <string name="share_target_label">Navigate with V2X2MAP</string>
     <string name="share_dest_resolving">V2X2MAP: looking up destination…</string>
     <string name="share_dest_live">V2X2MAP: navigating to %1$s in Android Auto</string>

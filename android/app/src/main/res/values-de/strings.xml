@@ -209,6 +209,7 @@
     <string name="hw_led_user_body">• Aus – Sniffer läuft normal, wartet auf Frames.\n• Kurzes Aufleuchten beim Start – Bootloader aktiv / App startet.\n• Dauerhaft an – Board im Download-Modus. Passiert wenn das RTS-Signal beim Verbinden gesetzt bleibt. App und Bridge erzwingen RTS=low nach dem Öffnen. Bei Drittsoftware DTR=false, RTS=false manuell setzen.</string>
     <string name="hw_no_frames_title">Keine Frames obwohl verbunden?</string>
     <string name="hw_no_frames_body">Der Sniffer startet auf Kanal 1 (2,4 GHz). Echter ITS-G5-/V2X-Verkehr liegt bei 5,9 GHz — RSSI −128 dBm und null Frames ist normal bis der Kanal über die UART-Konsole (GPIO 11/12, ohne Probe nicht zugänglich) gewechselt wird.\n\nEin Test-Frame (Payload DEADBEEF…) wird bei jedem Boot gesendet und erscheint als erster Eintrag im Frame-Log — damit lässt sich prüfen ob USB und Firmware funktionieren.</string>
+    <string name="notif_stop">Beenden</string>
     <string name="share_target_label">Mit V2X2MAP navigieren</string>
     <string name="share_dest_resolving">V2X2MAP: Ziel wird gesucht…</string>
     <string name="share_dest_live">V2X2MAP: Navigation zu %1$s in Android Auto gestartet</string>

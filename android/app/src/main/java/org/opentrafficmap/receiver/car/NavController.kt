@@ -239,9 +239,20 @@ class NavController(
             pos = pos, headingDeg = heading, speedMps = speedMps,
             route = route, distAlong = navState?.distAlong ?: 0.0,
             v2x = V2xHub.snapshot(), ahead = ahead, navigating = navigating, text = text,
-            speedLimitKph = speedLimitKph, speeding = speeding,
+            speedLimitKph = speedLimitKph, speeding = speeding, linkHint = linkHint(),
         )
         renderer.requestFrame()
+    }
+
+    private fun linkHint(): String {
+        val de = text.german
+        return when (org.opentrafficmap.receiver.BtSession.state) {
+            org.opentrafficmap.receiver.BluetoothController.State.SCANNING -> if (de) "ESP32 wird gesucht…" else "Searching ESP32…"
+            org.opentrafficmap.receiver.BluetoothController.State.CONNECTING -> if (de) "Verbinde ESP32…" else "Connecting ESP32…"
+            org.opentrafficmap.receiver.BluetoothController.State.CONNECTED -> if (de) "ESP32 verbunden, warte auf Daten" else "ESP32 connected, waiting for data"
+            org.opentrafficmap.receiver.BluetoothController.State.ERROR -> if (de) "ESP32-Fehler – V2X verbinden antippen" else "ESP32 error – tap Connect V2X"
+            org.opentrafficmap.receiver.BluetoothController.State.IDLE -> if (de) "„V2X verbinden“ antippen" else "Tap Connect V2X"
+        }
     }
 
     private fun updateTrip(r: Route, st: NavState) {
