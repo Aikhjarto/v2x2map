@@ -65,8 +65,9 @@ object ItsG5Decoder {
             // to locate the inner GN Common Header.  For unsecured packets the
             // GN Common Header is directly at commonOff.
             val innerOff: Int = if (secured) {
-                findInnerGnCommonHeader(p, commonOff, minOf(commonOff + 20, p.size - 36))
-                    .takeIf { it >= 0 } ?: continue
+                (secPayloadOffset(p, commonOff)
+                    ?: findInnerGnCommonHeader(p, commonOff, minOf(commonOff + 20, p.size - 36)).takeIf { it >= 0 })
+                    ?: continue
             } else {
                 commonOff
             }
@@ -199,6 +200,33 @@ object ItsG5Decoder {
         ByteBuffer.wrap(p, off, 4).order(ByteOrder.BIG_ENDIAN).int
 
     private val HDR_LENGTHS = intArrayOf(24, 26, 30, 32)
+
+    /**
+     * Start of the signed payload (the inner GN Common Header), read deterministically from the
+     * IEEE 1609.2 / ETSI TS 103 097 envelope (COER):
+     *   03 81 00 <preamble with data bit 0x40> 03 80 <OER length> <payload>
+     * or, for an unsigned 1609.2 wrapper, 03 80 <OER length> <payload>.
+     * The OER length is 1 byte (< 128) or 0x81/0x82 followed by 1/2 length bytes. The old
+     * heuristic search mistook the bytes of a 2-byte length (payloads >= 256 B) for a header,
+     * which shifted every field — e.g. positions like 84.4° N, 57.9° E for large IVIMs.
+     */
+    internal fun secPayloadOffset(p: ByteArray, c: Int): Int? {
+        fun u(i: Int) = if (i < p.size) p[i].toInt() and 0xFF else -1
+        val lenAt = when {
+            u(c) == 0x03 && u(c + 1) == 0x81 && (u(c + 3) and 0x40) != 0 && u(c + 4) == 0x03 && u(c + 5) == 0x80 -> c + 6
+            u(c) == 0x03 && u(c + 1) == 0x80 -> c + 2
+            else -> return null
+        }
+        val first = u(lenAt)
+        val (len, start) = when {
+            first < 0 -> return null
+            first < 0x80 -> first to lenAt + 1
+            first == 0x81 -> u(lenAt + 1) to lenAt + 2
+            first == 0x82 -> ((u(lenAt + 1) shl 8) or u(lenAt + 2)) to lenAt + 3
+            else -> return null
+        }
+        return if (len >= 8 && start + len <= p.size) start else null
+    }
 
     /**
      * Locates the inner GN Common Header inside an IEEE 1609.2 security envelope.
