@@ -2,6 +2,8 @@
 
 
 > **Android Auto:** this fork adds a navigation app for the car screen that shows V2X traffic lights, hazards and vehicles along your route. See [docs/ANDROID_AUTO.md](docs/ANDROID_AUTO.md).
+>
+> To make it appear in Android Auto it must be installed with Google Play recorded as source (e.g. via UnknownAuto + Shizuku); a normal sideload is not shown. Step-by-step: [docs/ANDROID_AUTO.md → Install it so that it appears in Android Auto](docs/ANDROID_AUTO.md#2-install-it-so-that-it-appears-in-android-auto).
 
 Plug a $20 ESP32-C5 dev board into your phone, drive somewhere with modern infrastructure, watch the CAMs, DENMs and SPATEMs roll in.
 

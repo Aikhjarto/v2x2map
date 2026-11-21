@@ -14,24 +14,56 @@ Search uses Photon. The map uses the OpenStreetMap standard tiles, darkened at n
 need no API key, but they **need mobile data**. If there is no network, the map falls back to tiles
 you downloaded in the phone app ("Download visible map").
 
-## 1. Build & install
+## 1. Build
 
 ```
 cd android
 ./gradlew assembleDebug          # Windows: .\gradlew.bat assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+# APK: android/app/build/outputs/apk/debug/app-debug.apk
 ```
-Or open `android/` in Android Studio and press Run. The new dependency is
-`androidx.car.app:app:1.4.0`.
+Or open `android/` in Android Studio and build there. GitHub Actions also builds the APK on every
+push (artifact `V2X2MAP-android-auto-debug`).
 
-## 2. Let Android Auto show a sideloaded app (one time)
+## 2. Install it so that it appears in Android Auto
 
-Android Auto hides apps that weren't installed from the Play Store until you allow it:
+**A normal install (`adb install`, Android Studio "Run", opening the APK in a file manager) is not
+enough.** Android Auto only shows apps built with the Car App Library — like V2X2MAP — if Android
+recorded *Google Play* as their source. The developer switch "Unknown sources" in Android Auto no
+longer helps for navigation apps (seen with Android Auto 18.0, November 2026: the log says
+`CAR.VALIDATOR: Package DENIED; failed all other checks`). Even `adb install -i com.android.vending`
+is not enough, because the *initiating* package stays the shell.
 
-1. On the phone, open **Android Auto settings** (Settings → Connected devices → Android Auto).
-2. Scroll down and tap **Version** about 10 times until "Developer settings" is unlocked.
-3. ⋮ menu → **Developer settings** → enable **Unknown sources**.
-4. Reconnect to the car. **V2X2MAP** now appears in the car's app launcher, next to Google Maps.
+What works is installing through [UnknownAuto](https://github.com/GitMag/UnknownAuto) (MIT, free)
+with [Shizuku](https://shizuku.rikka.app/), which runs Android's own installer so that Google Play
+is recorded as source:
+
+1. **Android Auto developer settings (one time):** Settings → Connected devices → Connection
+   preferences → **Android Auto** (or search Settings for "Android Auto"). Scroll down, tap
+   **Version** about 10 times, confirm. Then ⋮ → **Developer settings** → enable **Unknown sources**.
+2. **Install Shizuku** from the Play Store and open it once.
+3. **Start Shizuku.** Either on the phone via *Wireless debugging* (the phone must be connected to a
+   Wi-Fi network — its own hotspot does not count), or from a computer over USB:
+   ```
+   adb shell "$(adb shell pm path moe.shizuku.privileged.api | sed 's/package://; s#/base.apk##' | tr -d '\r')/lib/arm64/libshizuku.so"
+   ```
+   Shizuku must be started again after every phone restart.
+4. **Install UnknownAuto** from its GitHub releases page and allow it Shizuku access.
+5. **Copy the V2X2MAP APK to the phone**, e.g. `adb push app-debug.apk /sdcard/Download/`.
+6. In UnknownAuto: **Load APK or XAPK…** → pick the APK → **Install for Android Auto**. If Play
+   Protect asks, let it scan or choose *Install without scanning*.
+7. Check Android Auto settings → **Customize launcher**: V2X2MAP must be listed and ticked. Then
+   connect to the car.
+
+**Every update must be installed the same way.** A plain `adb install -r` of a newer build records
+the shell as source again and V2X2MAP disappears from the car screen; reinstalling via UnknownAuto
+brings it back (settings and recent destinations are kept).
+
+Notes:
+* The same works for other sideloaded Car App Library apps (e.g. OsmAnd from F-Droid). Apps that
+  also exist in the Play Store under the same package name may then be offered Play updates that
+  fail because the signature differs.
+* Google regularly changes Android Auto; this workaround may break at any time. The clean long-term
+  route is distributing V2X2MAP through a Google Play (internal) test track.
 
 ## 3. Use it in the car
 
