@@ -23,6 +23,9 @@ object SpatTemParser {
 
         fun bits(n: Int): Int = (0 until n).fold(0) { acc, _ -> (acc shl 1) or bit() }
 
+        // UPER IA5String with a size constraint: length, then 7 bits per character.
+        fun skipIa5(lo: Int, hi: Int) { bits(constrained(lo, hi) * 7) }
+
         // UPER constrained whole number: value encoded in ceil(log2(range)) bits.
         fun constrained(lo: Int, hi: Int): Int {
             val range = hi - lo + 1
@@ -49,18 +52,20 @@ object SpatTemParser {
     }
 
     private fun parseSpatPhase(b: Bits): Phase {
-        // SPAT ::= SEQUENCE { timeStamp OPT(20b), name OPT(var), intersections, ... }
+        // SPAT ::= SEQUENCE { timeStamp OPT, name OPT, intersections, regional OPT, ... }
+        // (ISO TS 19091 / J2735): extension bit + THREE optional-field bits. Reading only two
+        // shifted every later field by one bit and produced a constant bogus phase.
         b.bit()
-        val spatOpt = b.bits(2)
-        if ((spatOpt shr 1) and 1 == 1) b.bits(20)
-        if (spatOpt and 1 == 1) b.bits(b.constrained(1, 63) * 8)
+        val spatOpt = b.bits(3)
+        if ((spatOpt shr 2) and 1 == 1) b.bits(20)           // timeStamp MinuteOfTheYear
+        if ((spatOpt shr 1) and 1 == 1) b.skipIa5(1, 63)     // name DescriptiveName (IA5String)
 
         b.constrained(1, 32) // IntersectionStateList count
 
         // IntersectionState (first)
         b.bit() // ext
         val intOpt = b.bits(6) // name, moy, ts, lanes, maneuvers, regional
-        if ((intOpt shr 5) and 1 == 1) b.bits(b.constrained(1, 63) * 8) // name
+        if ((intOpt shr 5) and 1 == 1) b.skipIa5(1, 63) // name
 
         // IntersectionReferenceID ::= SEQUENCE { region OPT, id }
         if (b.bit() == 1) b.bits(16) // region INTEGER(0..65535)
@@ -81,7 +86,7 @@ object SpatTemParser {
         // MovementState (first)
         b.bit() // ext
         val movOpt = b.bits(3) // name, maneuvers, regional
-        if ((movOpt shr 2) and 1 == 1) b.bits(b.constrained(1, 63) * 8) // name
+        if ((movOpt shr 2) and 1 == 1) b.skipIa5(1, 63) // movementName
         b.bits(8) // signalGroup INTEGER(0..255)
 
         b.constrained(1, 16) // MovementEventList count
@@ -90,12 +95,18 @@ object SpatTemParser {
         b.bit()    // ext
         b.bits(3)  // optional bitmap: timing, speeds, regional
 
-        // eventState MovementPhaseState ENUMERATED(9 values, 0..8) → 4 bits
-        return when (b.constrained(0, 8)) {
-            3    -> Phase.RED
-            7, 8 -> Phase.YELLOW
-            5, 6 -> Phase.GREEN
-            else -> Phase.UNKNOWN
-        }
+        // eventState MovementPhaseState ENUMERATED (10 values, 0..9) → 4 bits:
+        // 0 unavailable, 1 dark, 2 stop-Then-Proceed (flashing red), 3 stop-And-Remain (red),
+        // 4 pre-Movement (red+amber), 5/6 permissive/protected movement (green),
+        // 7/8 permissive/protected clearance (amber), 9 caution-Conflicting-Traffic (flashing amber)
+        return phaseOf(b.constrained(0, 9))
+    }
+
+    internal fun phaseOf(eventState: Int): Phase = when (eventState) {
+        2, 3    -> Phase.RED
+        4       -> Phase.YELLOW      // red+amber: about to turn green
+        5, 6    -> Phase.GREEN
+        7, 8, 9 -> Phase.YELLOW
+        else    -> Phase.UNKNOWN
     }
 }
