@@ -48,6 +48,18 @@ Android Auto hides apps that weren't installed from the Play Store until you all
 5. During guidance: **Exit** stops navigation, **Avoid** (shown when a hazard is on your route)
    reroutes around it, and the speaker icon mutes voice guidance.
 
+### Set the destination from the phone
+
+In Google Maps, OsmAnd, Contacts, a chat or a web page, tap **Share** on a place or address and pick
+**Navigate with V2X2MAP** ("Mit V2X2MAP navigieren"). Tapping a `geo:` link also offers V2X2MAP.
+
+* If V2X2MAP is open in Android Auto, guidance starts right away.
+* Otherwise the destination is kept for 6 hours and guidance starts the next time you open
+  V2X2MAP in Android Auto. It is also added to the recent destinations.
+* A short message on the phone says what was found. Supported: `geo:` links, Google Maps links
+  (including `maps.app.goo.gl` short links, which are expanded via Google), OpenStreetMap and
+  OsmAnd links, plain `lat, lon` text, and otherwise the shared text as an address search (Photon).
+
 ## 4. Testing at your desk (no car, no V2X traffic)
 
 Use the **Desktop Head Unit (DHU)** from Android Studio's SDK Manager

@@ -223,5 +223,10 @@
     <string name="about_license_material">Android Material Components — Apache 2.0</string>
     <string name="about_license_flexbox">FlexboxLayout — Apache 2.0</string>
     <string name="about_license_kotlin">Kotlin Standard Library &amp; Coroutines — Apache 2.0</string>
+    <string name="share_target_label">Navigate with V2X2MAP</string>
+    <string name="share_dest_resolving">V2X2MAP: looking up destination…</string>
+    <string name="share_dest_live">V2X2MAP: navigating to %1$s in Android Auto</string>
+    <string name="share_dest_saved">V2X2MAP: destination saved (%1$s). Guidance starts when you open V2X2MAP in Android Auto.</string>
+    <string name="share_dest_failed">V2X2MAP: no place found in the shared text</string>
     <string name="about_credits">Based on the firmware from opentrafficmap/its-g5-receiver-firmware (forked for ESP32-C5 + BLE streaming).</string>
 </resources>

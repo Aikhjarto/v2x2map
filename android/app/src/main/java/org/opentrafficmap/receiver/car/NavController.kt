@@ -61,8 +61,12 @@ class NavController(
     private val avoid = mutableListOf<LatLon>()
     private val alerted = HashSet<String>()
     private var lastReroute = 0L
+    /** Destination shared from the phone, waiting for the first GPS fix. */
+    private var sharedDest: Place? = PendingDestination.take(ctx)
+    private val shareListener: (Place) -> Unit = { p -> acceptShared(p) }
 
     init {
+        PendingDestination.listener = shareListener
         V2xHub.text = text
         navManager.setNavigationManagerCallback(object : NavigationManagerCallback {
             override fun onStopNavigation() { main.post { stopNavigation() } }
@@ -108,6 +112,7 @@ class NavController(
     fun destroy() {
         stop(); stopNavigation(); tts?.shutdown(); io.shutdownNow(); renderer.release()
         navManager.clearNavigationManagerCallback()
+        if (PendingDestination.listener === shareListener) PendingDestination.listener = null
     }
 
     /** 1 Hz housekeeping: expire V2X objects, keep HUD fresh while standing still. */
@@ -178,6 +183,7 @@ class NavController(
     private fun onFix(p: LatLon, hdg: Double?, speed: Double, acc: Double) {
         pos = p; heading = hdg ?: heading; speedMps = speed; accuracy = acc
         renderer.onNewFix(p)
+        sharedDest?.let { d -> sharedDest = null; startShared(d) }
         val eng = engine
         val r = route
         if (eng != null && r != null) {
@@ -329,6 +335,19 @@ class NavController(
         } else if (!q.isNullOrBlank()) {
             search(q) { results -> results.firstOrNull()?.let { navigateTo(it) } ?: toast("“$q”?") }
         }
+    }
+
+    // ---- destination shared on the phone ("Navigate with V2X2MAP") ------------------------
+
+    private fun acceptShared(p: Place) {
+        PendingDestination.clear(ctx)
+        if (pos != null) startShared(p) else sharedDest = p   // otherwise wait for the first fix
+    }
+
+    private fun startShared(p: Place) {
+        if (simulating) stopSimulation()
+        toast((if (text.german) "Navigation zu " else "Navigating to ") + p.name)
+        navigateTo(p)
     }
 
     fun search(q: String, cb: (List<Place>) -> Unit) {

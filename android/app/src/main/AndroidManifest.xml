@@ -81,6 +81,27 @@
             android:label="@string/about_title"
             android:parentActivityName=".SettingsActivity"/>
 
+        <!-- "Navigate with V2X2MAP": share a place from another app → Android Auto destination -->
+        <activity
+            android:name=".ShareToCarActivity"
+            android:exported="true"
+            android:label="@string/share_target_label"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="geo"/>
+            </intent-filter>
+        </activity>
+
         <!-- ===== Android Auto: navigation app with V2X layer ===== -->
         <meta-data
             android:name="com.google.android.gms.car.application"
