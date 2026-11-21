@@ -1,13 +1,21 @@
 package org.opentrafficmap.receiver
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.hardware.usb.UsbManager
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 
 class ReceiverForegroundService : Service() {
 
@@ -29,15 +37,29 @@ class ReceiverForegroundService : Service() {
             PendingIntent.FLAG_IMMUTABLE,
         )
 
-        startForeground(NOTIF_ID, buildNotification(getString(R.string.notif_running)))
+        // Android 14+ only allows a "connectedDevice" foreground service once Bluetooth permission
+        // is granted or a USB device is attached with permission. Starting it earlier threw a
+        // SecurityException and, with START_STICKY, crash-looped the whole app.
+        if (!mayRunAsConnectedDevice(this)) { stopSelf(); return START_NOT_STICKY }
+        try {
+            ServiceCompat.startForeground(this, NOTIF_ID, buildNotification(getString(R.string.notif_running)),
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
+        } catch (e: Exception) {   // SecurityException / ForegroundServiceStartNotAllowedException
+            stopSelf(); return START_NOT_STICKY
+        }
 
-        val pm = getSystemService(PowerManager::class.java)
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "v2x2map:receiver")
-            .also { it.acquire(MAX_SESSION_MS) }
+        if (wakeLock == null) {
+            val pm = getSystemService(PowerManager::class.java)
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "v2x2map:receiver")
+                .also { it.acquire(MAX_SESSION_MS) }
+        }
 
         instance = this
-        return START_STICKY
+        // Not sticky: after the process dies there is no BT/USB connection left to keep alive.
+        return START_NOT_STICKY
     }
+
+
 
     override fun onDestroy() {
         instance = null
@@ -65,5 +87,14 @@ class ReceiverForegroundService : Service() {
         private const val MAX_SESSION_MS = 8L * 60 * 60 * 1000
 
         @Volatile var instance: ReceiverForegroundService? = null
+
+        /** Whether Android allows the "connectedDevice" foreground service right now (Android 14+ rule). */
+        fun mayRunAsConnectedDevice(ctx: Context): Boolean {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return true
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED) return true
+            val usb = ctx.getSystemService(UsbManager::class.java)
+            return usb?.deviceList?.values?.any { usb.hasPermission(it) } == true
+        }
     }
 }

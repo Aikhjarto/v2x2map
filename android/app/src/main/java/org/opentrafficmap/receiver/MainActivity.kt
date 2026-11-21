@@ -437,16 +437,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startReceiverService() {
+        // Starting it without BT permission / USB device would crash (Android 14 FGS type rules).
+        if (!ReceiverForegroundService.mayRunAsConnectedDevice(this)) return
         val intent = Intent(this, ReceiverForegroundService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
-        else startService(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+            else startService(intent)
+        } catch (_: Exception) { /* e.g. not allowed from the background — the connection still works */ }
     }
 
     // -------------------------------------------------------------- USB
 
     private fun toggleUsb() {
         if (usb == null) {
-            ensureServiceRunning()
+            // the foreground service is started once the port is open (see onUsbState)
             usb = UsbSerialController(this, ::onSerialBytes, ::onUsbState).also { it.start() }
         } else {
             usb?.stop(); usb = null
@@ -455,6 +459,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onUsbState(state: UsbSerialController.State, info: String?) = runOnUiThread {
+        if (state == UsbSerialController.State.CONNECTED) ensureServiceRunning()
         binding.btnConnect.text = when (state) {
             UsbSerialController.State.IDLE       -> getString(R.string.connect)
             UsbSerialController.State.REQUESTING -> info ?: getString(R.string.usb_connecting)
