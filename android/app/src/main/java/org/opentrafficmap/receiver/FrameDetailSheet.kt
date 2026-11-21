@@ -94,14 +94,10 @@ object FrameDetailSheet {
         var off = 0
         while (off < data.size) {
             sb.append("%04x  ".format(off))
-            val end = minOf(off + 16, data.size)
-            for (i in off until end) {
-                sb.append("%02x ".format(data[i].toInt() and 0xFF))
-                if (i - off == 7) sb.append(' ')
-            }
-            val pad = 16 - (end - off)
-            repeat(pad) { sb.append("   ") }
-            if (pad > 8) sb.append(' ')
+            // 8 bytes per line so offset, hex and ASCII fit on a phone screen without wrapping
+            val end = minOf(off + 8, data.size)
+            for (i in off until end) sb.append("%02x ".format(data[i].toInt() and 0xFF))
+            repeat(8 - (end - off)) { sb.append("   ") }
             sb.append(" |")
             for (i in off until end) {
                 val c = data[i].toInt() and 0xFF
