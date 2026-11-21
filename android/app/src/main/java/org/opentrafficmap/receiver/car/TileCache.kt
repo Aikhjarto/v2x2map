@@ -5,9 +5,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import org.opentrafficmap.receiver.NightTiles
 import android.util.LruCache
 import java.io.File
 import java.net.HttpURLConnection
@@ -39,24 +38,9 @@ class TileCache(private val ctx: Context, private val onTileLoaded: () -> Unit) 
         val NIGHT = Style("osm-night", "osm", OSM_URLS, "Mapnik", night = true)
         private const val USER_AGENT = "V2X2MAP-Auto/1.0 (org.opentrafficmap.receiver; Android Auto navigation)"
 
-        /** Invert, rotate hue by 180° (keeps water blue, parks green) and dim — a dark map from light tiles. */
-        private val NIGHT_FILTER = ColorMatrixColorFilter(ColorMatrix().apply {
-            set(floatArrayOf(
-                -1f, 0f, 0f, 0f, 255f,
-                0f, -1f, 0f, 0f, 255f,
-                0f, 0f, -1f, 0f, 255f,
-                0f, 0f, 0f, 1f, 0f))
-            postConcat(ColorMatrix(floatArrayOf(   // CSS hue-rotate(180deg)
-                -0.574f, 1.430f, 0.144f, 0f, 0f,
-                0.426f, 0.430f, 0.144f, 0f, 0f,
-                0.426f, 1.430f, -0.856f, 0f, 0f,
-                0f, 0f, 0f, 1f, 0f)))
-            postConcat(ColorMatrix().apply { setScale(0.80f, 0.82f, 0.88f, 1f) })
-        })
-
         private fun toNight(src: Bitmap): Bitmap {
             val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
-            Canvas(out).drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = NIGHT_FILTER })
+            Canvas(out).drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = NightTiles.filter })
             return out
         }
     }

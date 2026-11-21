@@ -160,7 +160,7 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         binding.toolbar.setOnMenuItemClickListener(::onMenuItemClick)
 
-        binding.map.setTileSource(tileSourceForKey(Prefs.mapLayer(this)))
+        applyMapLayer(Prefs.mapLayer(this))
         binding.map.setMultiTouchControls(true)
         binding.map.controller.setZoom(6.0)
         binding.map.controller.setCenter(GeoPoint(51.0, 10.0))
@@ -333,23 +333,21 @@ class MainActivity : AppCompatActivity() {
             .setSingleChoiceItems(labels, current) { dlg, which ->
                 val key = keys[which]
                 Prefs.setMapLayer(this, key)
-                binding.map.setTileSource(tileSourceForKey(key))
+                applyMapLayer(key)
                 dlg.dismiss()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 
+    private fun applyMapLayer(key: String) {
+        binding.map.setTileSource(tileSourceForKey(key))
+        binding.map.overlayManager.tilesOverlay.setColorFilter(if (key == "DARK") NightTiles.filter else null)
+    }
+
     private fun tileSourceForKey(key: String): ITileSource = when (key) {
-        "DARK" -> XYTileSource(
-            "CartoDB_DarkMatter", 0, 19, 256, ".png",
-            arrayOf(
-                "https://a.basemaps.cartocdn.com/dark_all/",
-                "https://b.basemaps.cartocdn.com/dark_all/",
-                "https://c.basemaps.cartocdn.com/dark_all/",
-                "https://d.basemaps.cartocdn.com/dark_all/"
-            )
-        )
+        // CARTO Dark Matter now requires an API key; darken the OSM tiles instead (see applyMapLayer).
+        "DARK" -> TileSourceFactory.MAPNIK
         "SATELLITE" -> object : OnlineTileSourceBase("Esri_WorldImagery", 0, 19, 256, "",
             arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")
         ) {
