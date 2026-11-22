@@ -24,6 +24,13 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /** OsmAnd's access dialog only knows the calling app when started for a result. */
+    private val osmandAccess = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        // granted or not: reconnect so the status shows the new state
+        org.opentrafficmap.receiver.osmand.OsmAndBridge.stop()
+        if (Prefs.osmandAddon(this)) org.opentrafficmap.receiver.osmand.OsmAndBridge.start(this)
+    }
+
     private lateinit var binding: ActivitySettingsBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,7 +80,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.osmandStatus.setOnClickListener {
             // newer OsmAnd versions have a permission dialog; older ones: Plugins → connected apps
             org.opentrafficmap.receiver.osmand.OsmAndBridge.permissionRequestIntent(this)?.let {
-                runCatching { startActivity(it) }
+                runCatching { osmandAccess.launch(it) }
             }
         }
         // Debug builds: long press inserts a simulated traffic light + hazard near you (desk test)
