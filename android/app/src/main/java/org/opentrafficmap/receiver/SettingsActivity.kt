@@ -120,7 +120,10 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, msg ?: getString(R.string.rec_status_idle), Toast.LENGTH_LONG).show()
             renderRecordingState()
         }
-        binding.btnLoadRecording.setOnClickListener { showLoadRecordingDialog() }
+        binding.btnLoadRecording.setOnClickListener {
+            if (RecordingReplay.isRunning) { RecordingReplay.stop(); renderReplayState() } else showLoadRecordingDialog()
+        }
+        renderReplayState()
 
         // --- Marker / path TTL ----------------------------------------------
         binding.edMarkerTtl.setText(Prefs.markerTtlMinutes(this).toString())
@@ -277,29 +280,63 @@ class SettingsActivity : AppCompatActivity() {
             // "no recordings yet" hint goes into the title to keep "Other file…" visible.
             .setTitle(if (files.isEmpty()) R.string.rec_load_none else R.string.rec_load_title)
             .setItems(labels.toTypedArray()) { _, i ->
-                if (i < files.size) files[i].let { f -> loadRecording(f.name) { f.inputStream() } }
+                if (i < files.size) files[i].let { f -> loadRecording(f.name, f) { f.inputStream() } }
                 else openRecording.launch(arrayOf("*/*"))
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 
-    /** Parses the PCAP off the main thread, then hands the frames to the map/log and closes Settings. */
-    private fun loadRecording(name: String, open: () -> InputStream) {
+    /**
+     * Parses the PCAP off the main thread, then either shows all frames at once on the map/log or
+     * replays them in (4×) real time ([RecordingReplay]), and closes Settings. [file] (own
+     * recordings) is used to find the own track next to it.
+     */
+    private fun loadRecording(name: String, file: java.io.File? = null, open: () -> InputStream) {
         Toast.makeText(this, getString(R.string.rec_loading, name), Toast.LENGTH_SHORT).show()
         Thread {
             val result = runCatching { open().use { PcapReader.read(it) } }
             runOnUiThread {
                 result.onSuccess { frames ->
-                    SettingsBus.loadFrames(frames, name)
-                    Toast.makeText(this, getString(R.string.rec_loaded, frames.size, name), Toast.LENGTH_LONG).show()
-                    finish()
+                    AlertDialog.Builder(this)
+                        .setTitle(getString(R.string.replay_mode_title, frames.size, name))
+                        .setItems(arrayOf(getString(R.string.replay_mode_show), getString(R.string.replay_mode_1x),
+                            getString(R.string.replay_mode_4x))) { _, which ->
+                            if (which == 0) {
+                                SettingsBus.loadFrames(frames, name)
+                                Toast.makeText(this, getString(R.string.rec_loaded, frames.size, name), Toast.LENGTH_LONG).show()
+                            } else startReplay(frames, name, file, if (which == 1) 1.0 else 4.0)
+                            finish()
+                        }
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show()
                 }.onFailure { e ->
                     Toast.makeText(this, getString(R.string.rec_load_failed, e.message ?: e.javaClass.simpleName),
                         Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
+    }
+
+    private fun startReplay(frames: List<Frame>, name: String, pcap: java.io.File?, speed: Double) {
+        val base = pcap?.let { it.parentFile to it.name.removeSuffix(".pcap") }
+        val ownTrack = base?.let { (dir, n) -> java.io.File(dir, "$n-track.csv") }?.takeIf { it.isFile }
+        val playStore = base?.let { (dir, n) -> java.io.File(dir, "$n.csv") }?.takeIf { it.isFile }
+            ?.let { f -> f.useLines { ReplayTimeline.parsePlayStoreCsv(it) } }
+        val track = ownTrack?.useLines { ReplayTimeline.parseTrack(it) } ?: playStore?.track.orEmpty()
+        val events = ReplayTimeline.build(frames, playStore?.frameTimes, track)
+        RecordingReplay.start(this, events, speed, name)
+        val msg = when {
+            track.isEmpty() -> getString(R.string.replay_started_no_track, name)
+            RecordingReplay.mockActive -> getString(R.string.replay_started_track, name)
+            else -> getString(R.string.replay_started_no_mock, name)
+        }
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+    }
+
+    private fun renderReplayState() {
+        binding.btnLoadRecording.text = if (RecordingReplay.isRunning) getString(R.string.replay_stop, RecordingReplay.label)
+            else getString(R.string.rec_load)
     }
 
     private fun mqttTypeLabel(type: ItsG5Decoder.MsgType): String = getString(when (type) {

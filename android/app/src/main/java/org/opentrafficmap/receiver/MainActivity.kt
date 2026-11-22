@@ -746,7 +746,7 @@ class MainActivity : AppCompatActivity() {
                 else       -> ""
             }
             binding.logStats.text = getString(R.string.log_stats, totalFrames.toInt(), rate) + suffix +
-                (viewingRecording?.let { "  ·  $it" } ?: "")
+                (viewingRecording?.let { "  ·  $it" } ?: "") + (RecordingReplay.label?.let { "  ·  ▶ $it" } ?: "")
             if (::markers.isInitialized && viewingRecording == null) markers.prune()
             if (::intersections.isInitialized) refreshIntersections()
             lastLocation?.let { updateSpatLight(it) }        // phases change without new GPS fixes

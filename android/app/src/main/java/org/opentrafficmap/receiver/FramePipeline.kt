@@ -72,6 +72,19 @@ object FramePipeline {
         if (uiListeners.isNotEmpty()) main.post { uiListeners.forEach { it.onFrames(frames) } }
     }
 
+    /**
+     * Frames of a recording replay ([RecordingReplay]) with their original receive time: into the
+     * live picture and the phone UI (stamped "now" so they don't expire at once) — not to the
+     * recorder, MQTT or the statistics.
+     */
+    fun onReplayFrames(frames: List<Pair<Frame, Long?>>) {
+        if (frames.isEmpty()) return
+        val now = System.currentTimeMillis()
+        frames.forEach { (f, recordedAt) -> V2xHub.ingest(f, recordedAt) }
+        val stamped = frames.map { it.first.copy(receivedMs = now) }
+        if (uiListeners.isNotEmpty()) main.post { uiListeners.forEach { it.onFrames(stamped) } }
+    }
+
     /** Frames in the last minute. */
     fun ratePerMinute(): Int = synchronized(rateWindow) {
         val cutoff = System.currentTimeMillis() - 60_000

@@ -27,6 +27,7 @@ class FrameRecorder(private val context: Context) {
         private set
 
     val isRecording: Boolean get() = stream != null
+    private val track = TrackRecorder(context)
 
     @Synchronized
     fun start(): File? {
@@ -42,6 +43,7 @@ class FrameRecorder(private val context: Context) {
             stream = out
             file = f
             frameCount = 0
+            track.start(f)                                   // own GPS track next to it, for replays
             Log.i(tag, "recording to ${f.absolutePath}")
             f
         } catch (e: Exception) {
@@ -53,6 +55,7 @@ class FrameRecorder(private val context: Context) {
     @Synchronized
     fun stop(): File? {
         val s = stream ?: return null
+        track.stop()
         return try {
             s.flush(); s.close()
             stream = null

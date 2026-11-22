@@ -68,7 +68,10 @@ The board supports 5.9 GHz IEEE 802.11p out of the box; the firmware drives it a
 | **Geiger-counter mode** | Audio + haptic tick on every frame, distinct beep + buzz on DENM hazard |
 | **BLE + USB auto-reconnect** | Exponential-backoff reconnect on cable pull or BT drop — no user interaction |
 | **Offline maps** | OSMdroid tile cache up to 600 MB |
-| **PCAP recording** | One tap records to standard `.pcap`; open directly in Wireshark (link type 105 = IEEE 802.11) |
+| **PCAP recording** | One tap records to standard `.pcap`; open directly in Wireshark (link type 105 = IEEE 802.11). The own GPS track is written next to it (`…-track.csv`) |
+| **Recording replay** | Plays a recording back in real time or 4× (long pauses shortened) into the live picture — phone map, car screen, OsmAnd. Debug builds play the recorded own track back as the phone's location (select V2X2MAP as mock location app) |
+| **Intersection lanes (MAPEM)** | From zoom 16 the phone map shows the lanes of signalised intersections: ingress lanes in their signal group's colour with the group number at the stop line, connections through the intersection; tap a lane for its assignments. The car map shows them too |
+| **Lane-aware traffic lights** | With MAPEM, one light per approach and signal group at its stop line; "next traffic light" only uses lights facing your direction and picks your lane by sideways distance (straight-on when unclear) |
 | **Multi-broker MQTT** | One input field per broker, add/remove with + / 🗑; per-type message filter |
 | **Full i18n** | English default, German for German-locale devices — all UI, errors and notifications |
 

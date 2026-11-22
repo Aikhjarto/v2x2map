@@ -222,6 +222,14 @@
     <string name="rec_loading">Lade %1$s…</string>
     <string name="rec_loaded">%1$d Frames aus %2$s angezeigt (Zurücksetzen antippen, um nur Live-Daten zu sehen)</string>
     <string name="rec_load_failed">Aufnahme konnte nicht geladen werden: %1$s</string>
+    <string name="replay_mode_title">%1$d Frames aus %2$s</string>
+    <string name="replay_mode_show">Alle auf einmal anzeigen</string>
+    <string name="replay_mode_1x">In Echtzeit abspielen</string>
+    <string name="replay_mode_4x">4× schneller abspielen</string>
+    <string name="replay_stop">Wiedergabe beenden (%1$s)</string>
+    <string name="replay_started_track">Spiele %1$s mit der aufgezeichneten eigenen Position ab</string>
+    <string name="replay_started_no_track">Spiele %1$s ab (keine eigene Spur aufgezeichnet – echte Position)</string>
+    <string name="replay_started_no_mock">Spiele %1$s mit der echten Position ab. Für die aufgezeichnete: Entwickleroptionen → App für simulierte Standorte → V2X2MAP</string>
     <string name="osmand_section">OsmAnd</string>
     <string name="osmand_label">V2X in OsmAnd anzeigen</string>
     <string name="osmand_hint">Fügt einem installierten OsmAnd V2X2MAP-Ebenen hinzu: Fahrzeuge, Ampeln und Gefahren, dazu Status-Widgets. Offline mit OsmAnd navigieren und gleichzeitig V2X sehen.</string>

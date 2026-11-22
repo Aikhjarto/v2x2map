@@ -236,6 +236,14 @@
     <string name="rec_loading">Loading %1$s…</string>
     <string name="rec_loaded">Showing %1$d frames from %2$s (tap Reset to return to live data only)</string>
     <string name="rec_load_failed">Could not load recording: %1$s</string>
+    <string name="replay_mode_title">%1$d frames from %2$s</string>
+    <string name="replay_mode_show">Show all at once</string>
+    <string name="replay_mode_1x">Replay in real time</string>
+    <string name="replay_mode_4x">Replay 4× faster</string>
+    <string name="replay_stop">Stop replay (%1$s)</string>
+    <string name="replay_started_track">Replaying %1$s with the recorded own position</string>
+    <string name="replay_started_no_track">Replaying %1$s (no own track recorded — real position)</string>
+    <string name="replay_started_no_mock">Replaying %1$s with the real position. For the recorded one: Developer options → Select mock location app → V2X2MAP</string>
     <string name="osmand_section">OsmAnd</string>
     <string name="osmand_label">Show V2X in OsmAnd</string>
     <string name="osmand_hint">Adds V2X2MAP layers to an installed OsmAnd: vehicles, traffic lights and hazards, plus status widgets. Navigate offline with OsmAnd and see V2X at the same time.</string>
