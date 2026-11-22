@@ -234,20 +234,14 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** Debug only: simulated SPATEM light (red) ~55 m north and DENM roadworks ~60 m east of the last position. */
+    /** Debug only: cycling SPATEM light ~55 m north and DENM roadworks ~60 m east of the last position (DemoV2x). */
     private fun insertDemoV2x() {
         try {
             com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this).lastLocation
                 .addOnSuccessListener { l ->
                     if (l == null) { Toast.makeText(this, "No position yet", Toast.LENGTH_SHORT).show(); return@addOnSuccessListener }
-                    val now = System.currentTimeMillis()
-                    V2xHub.putSimulatedSignal(org.opentrafficmap.receiver.nav.V2xSignal(999_001L,
-                        org.opentrafficmap.receiver.nav.LatLon(l.latitude + 0.0005, l.longitude),
-                        org.opentrafficmap.receiver.nav.SignalPhase.RED, now, simulated = true))
-                    V2xHub.putSimulatedHazard(org.opentrafficmap.receiver.nav.V2xHazard("sim:osmand",
-                        org.opentrafficmap.receiver.nav.LatLon(l.latitude, l.longitude + 0.0008), 3, 0, "roadworks (SIM)",
-                        now, now + 10 * 60_000L, simulated = true))
-                    Toast.makeText(this, "Demo light + hazard inserted (10 min)", Toast.LENGTH_SHORT).show()
+                    DemoV2x.start(org.opentrafficmap.receiver.nav.LatLon(l.latitude, l.longitude))
+                    Toast.makeText(this, "Demo light (cycling) + hazard inserted (10 min)", Toast.LENGTH_SHORT).show()
                 }
         } catch (_: SecurityException) {
             Toast.makeText(this, "Location permission missing", Toast.LENGTH_SHORT).show()

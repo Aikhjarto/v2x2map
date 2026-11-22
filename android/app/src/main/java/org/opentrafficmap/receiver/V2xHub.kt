@@ -12,7 +12,7 @@ import java.util.concurrent.CopyOnWriteArraySet
  *             removed on cancellation, TTL = validityDuration (capped at 30 min)
  *  - SPATEM → signal heads at the RSU position (30 s TTL)
  *  - IVIM   → speed-limit zones of road signs (until validTo, at most 10 min after the last
- *             reception; removed on cancellation/negation). Needs [ivimDecoder].
+ *             reception; removed on cancellation/negation). Needs [messageDecoder].
  */
 object V2xHub {
 
@@ -29,8 +29,8 @@ object V2xHub {
     private val signals = HashMap<Long, V2xSignal>()
     private val speedZones = HashMap<String, IvimSpeedZone>()
 
-    /** Decodes a raw frame to its IVIM (set by [App] with the generated ASN.1 tables). */
-    @Volatile var ivimDecoder: ((ByteArray) -> org.opentrafficmap.receiver.asn1.AsnValue?)? = null
+    /** Decodes a raw frame to its ITS message (set by [App] with the generated ASN.1 tables). */
+    @Volatile var messageDecoder: ((ByteArray) -> org.opentrafficmap.receiver.asn1.AsnValue?)? = null
     private val frameTimes = ArrayDeque<Long>()
     @Volatile private var lastFrameMs = 0L
     private val listeners = CopyOnWriteArraySet<Listener>()
@@ -69,7 +69,12 @@ object V2xHub {
                 }
                 ItsG5Decoder.MsgType.IVIM -> ingestIvim(f.payload, now)
                 ItsG5Decoder.MsgType.SPATEM -> if (ll != null) {
-                    signals[f.stationId ?: 0L] = V2xSignal(f.stationId ?: 0L, ll, f.spatPhase.toSignal(), now)
+                    // full decode for the time to the next change; quick parser as fallback
+                    val full = try { messageDecoder?.invoke(f.payload) } catch (_: Exception) { null }
+                        ?.takeIf { it.at("spat") != null }
+                        ?.let { org.opentrafficmap.receiver.asn1.SpatemParser.parse(it, now) }
+                    signals[f.stationId ?: 0L] = V2xSignal(f.stationId ?: 0L, ll,
+                        full?.phase ?: f.spatPhase.toSignal(), now, endsAtMs = full?.endsAtMs)
                 }
                 else -> {}
             }
@@ -79,7 +84,7 @@ object V2xHub {
 
     /** Called under [lock]. */
     private fun ingestIvim(payload: ByteArray, now: Long) {
-        val v = try { ivimDecoder?.invoke(payload) } catch (_: Exception) { null } ?: return
+        val v = try { messageDecoder?.invoke(payload) } catch (_: Exception) { null }?.takeIf { it.at("ivi") != null } ?: return
         val r = org.opentrafficmap.receiver.asn1.IvimParser.parse(v, now) ?: return
         speedZones.keys.removeAll { it.startsWith(r.iviKey + ":") }
         if (!r.withdrawn) r.zones.forEach { speedZones[it.key] = it }

@@ -27,7 +27,13 @@ data class V2xHazard(
 data class V2xSignal(
     val id: Long, val pos: LatLon, val phase: SignalPhase, val lastSeenMs: Long,
     val simulated: Boolean = false,
-)
+    /** Absolute time of the next phase change (SPATEM timing), null if not sent. */
+    val endsAtMs: Long? = null,
+) {
+    /** Whole seconds until the next change, or null. */
+    fun remainingS(nowMs: Long = System.currentTimeMillis()): Int? =
+        endsAtMs?.let { (((it - nowMs).coerceAtLeast(0) + 999) / 1000).toInt() }
+}
 
 data class V2xSnapshot(
     val vehicles: List<V2xVehicle>,

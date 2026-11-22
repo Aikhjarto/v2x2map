@@ -372,12 +372,19 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
 
         // Next traffic light on route (big widget, Google-Maps-style card on the right)
         st.ahead?.signal?.let { sa ->
-            val w = 64f * d; val h = 150f * d
+            val remaining = sa.signal.remainingS()
+            val w = 64f * d; val h = if (remaining != null) 176f * d else 150f * d
             val box = RectF(right - w, top, right, top + h)
             fill.color = 0xEE202124.toInt(); c.drawRoundRect(box, 14f * d, 14f * d, fill)
             drawSignalPin(c, box.centerX(), box.top + 58f * d, sa.signal.phase, d * 2.0f)
             textPaint.color = Color.WHITE; textPaint.textSize = 15f * d
-            c.drawText(st.text.distance(sa.distM), box.centerX(), box.bottom - 22f * d, textPaint)
+            val distY = if (remaining != null) box.bottom - 48f * d else box.bottom - 22f * d
+            c.drawText(st.text.distance(sa.distM), box.centerX(), distY, textPaint)
+            remaining?.let {                                  // time to the next change (SPATEM timing)
+                textPaint.textSize = 18f * d; textPaint.color = 0xFFFFD54F.toInt()
+                c.drawText("$it s", box.centerX(), box.bottom - 22f * d, textPaint)
+                textPaint.color = Color.WHITE
+            }
             if (sa.signal.simulated) { textPaint.textSize = 9f * d; c.drawText("SIM", box.centerX(), box.bottom - 8f * d, textPaint) }
             top = box.bottom + margin
         }

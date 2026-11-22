@@ -26,7 +26,7 @@ class ItsDecoderTest {
         .filter { it.isNotBlank() }.map { it.split('\t', limit = 3) }.associate { (r, h, j) -> r to (hex(h) to j) }
 
     @Test fun vectorsMatchPycrate() {
-        val sets = mapOf("CAM" to "cam", "DENM" to "denm", "IVIM" to "iso")
+        val sets = mapOf("CAM" to "cam", "DENM" to "denm", "IVIM" to "iso", "SPATEM" to "iso")
         for ((root, v) in vectors) {
             val decoded = UperDecoder(AsnSchema.load(sets.getValue(root), open(sets.getValue(root)))).decode(root, v.first)
             assertEquals(root, v.second, AsnJson.toJson(decoded))

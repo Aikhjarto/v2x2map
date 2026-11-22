@@ -106,7 +106,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
     private fun signalText(s: SignalAhead): String = when (s.signal.phase) {
         SignalPhase.RED -> nav.text.signalRed; SignalPhase.YELLOW -> nav.text.signalYellow
         SignalPhase.GREEN -> nav.text.signalGreen; SignalPhase.UNKNOWN -> nav.text.signalUnknown
-    } + " · " + nav.text.distance(s.distM)
+    } + (s.signal.remainingS()?.let { " ($it s)" } ?: "") + " · " + nav.text.distance(s.distM)
 
     private fun actionStrip(): ActionStrip {
         val de = nav.text.german
