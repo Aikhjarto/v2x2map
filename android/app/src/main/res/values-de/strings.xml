@@ -141,6 +141,8 @@
     <string name="detail_type_ssem">SSEM – Signalstatus</string>
     <string name="detail_type_tlm">TLM – Ampelsteuerung</string>
     <string name="detail_type_rtcmem">RTCMEM – GNSS-Korrekturdaten</string>
+    <string name="log_test_frame">Firmware-Testframe (Start) — USB-Verbindung und Firmware OK</string>
+    <string name="detail_type_test">Firmware-Testframe</string>
     <string name="detail_type_unknown">Unbekannt</string>
     <string name="detail_type_itsg5_unknown">ITS-G5 (unbekannter BTP-Port)</string>
     <string name="detail_label_frame">Frame</string>

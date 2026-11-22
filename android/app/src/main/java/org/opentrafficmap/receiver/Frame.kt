@@ -25,6 +25,13 @@ data class Frame(
 ) {
     val len: Int get() = payload.size
 
+    /**
+     * The ESP32 firmware's boot test frame (payload DE AD BE EF 01 … 0C, usb_stream_send_test_frame):
+     * no ITS content by design. Also the variant whose first byte was lost on the USB link at boot.
+     */
+    val isFirmwareTestFrame: Boolean get() = payload.size == 16 && msgType == ItsG5Decoder.MsgType.UNKNOWN &&
+        (payload.contentEquals(TEST_PAYLOAD) || payload.copyOfRange(0, 15).contentEquals(TEST_PAYLOAD.copyOfRange(1, 16)))
+
     fun hexPreview(maxBytes: Int = 32): String {
         val n = minOf(payload.size, maxBytes)
         val sb = StringBuilder(n * 2)
@@ -38,4 +45,9 @@ data class Frame(
 
     override fun equals(other: Any?): Boolean = this === other
     override fun hashCode(): Int = seq.hashCode()
+
+    companion object {
+        private val TEST_PAYLOAD = byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte(),
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+    }
 }

@@ -46,7 +46,7 @@ object FrameDetailSheet {
         ItsG5Decoder.MsgType.SSEM    -> ctx.getString(R.string.detail_type_ssem)
         ItsG5Decoder.MsgType.TLM     -> ctx.getString(R.string.detail_type_tlm)
         ItsG5Decoder.MsgType.RTCMEM  -> ctx.getString(R.string.detail_type_rtcmem)
-        ItsG5Decoder.MsgType.UNKNOWN -> when (f.etherType) {
+        ItsG5Decoder.MsgType.UNKNOWN -> if (f.isFirmwareTestFrame) ctx.getString(R.string.detail_type_test) else when (f.etherType) {
             null   -> ctx.getString(R.string.detail_type_unknown)
             0x8947 -> ctx.getString(R.string.detail_type_itsg5_unknown)
             else   -> "EtherType 0x%04x".format(f.etherType)

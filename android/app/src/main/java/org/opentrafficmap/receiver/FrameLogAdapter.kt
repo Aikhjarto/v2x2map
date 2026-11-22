@@ -86,6 +86,7 @@ class FrameLogAdapter(
 
     private fun stationKey(f: Frame): String {
         val sid = f.stationId?.toString() ?: "anon"
+        if (f.isFirmwareTestFrame) return "TEST|$sid"
         return "${f.msgType.name}|$sid"
     }
 
@@ -137,7 +138,8 @@ class FrameLogAdapter(
 
         // Station title: type badge + ID
         val sid = entry.stationId?.let { "#%08x".format(it.toInt()) } ?: "—"
-        vh.title.text = "${entry.msgType.short}  $sid"
+        val test = entry.recentFrames.firstOrNull()?.isFirmwareTestFrame == true
+        vh.title.text = if (test) "TEST" else "${entry.msgType.short}  $sid"
         vh.title.setTextColor(entry.msgType.color)
 
         // Summary
@@ -173,6 +175,7 @@ class FrameLogAdapter(
     private fun buildSummary(entry: StationEntry): String {
         val f = entry.recentFrames.firstOrNull()
         val countStr = "${entry.frameCount}×"
+        if (f?.isFirmwareTestFrame == true) return "$countStr ${context.getString(R.string.log_test_frame)}"
         val detail = when (entry.msgType) {
             ItsG5Decoder.MsgType.CAM -> buildString {
                 if (f != null) {
