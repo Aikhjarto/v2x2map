@@ -224,11 +224,11 @@
     <string name="rec_load_failed">Aufnahme konnte nicht geladen werden: %1$s</string>
     <string name="osmand_section">OsmAnd</string>
     <string name="osmand_label">V2X in OsmAnd anzeigen</string>
-    <string name="osmand_hint">Fügt einem installierten OsmAnd eine Ebene „V2X2MAP“ hinzu: Fahrzeuge, Ampeln und Gefahren, dazu ein Status-Widget. Offline mit OsmAnd navigieren und gleichzeitig V2X sehen.</string>
+    <string name="osmand_hint">Fügt einem installierten OsmAnd V2X2MAP-Ebenen hinzu: Fahrzeuge, Ampeln und Gefahren, dazu Status-Widgets. Offline mit OsmAnd navigieren und gleichzeitig V2X sehen.</string>
     <string name="osmand_status_missing">OsmAnd ist nicht installiert (oder zu alt für seine AIDL-Schnittstelle).</string>
     <string name="osmand_status_connecting">Verbinde mit OsmAnd…</string>
     <string name="osmand_status_not_enabled">OsmAnd lehnt V2X2MAP ab: in OsmAnd → Menü → Plugins (verbundene Apps) einschalten. Neueres OsmAnd: hier tippen, um den Zugriff zu erlauben.</string>
-    <string name="osmand_status_active">Aktiv – V2X-Ebene und Widget werden in OsmAnd angezeigt (Ebene in OsmAnd → Karte konfigurieren ein-/ausschaltbar).</string>
+    <string name="osmand_status_active">Aktiv – V2X-Ebenen und Widgets werden in OsmAnd angezeigt (ausblendbar in OsmAnd → Karte konfigurieren → V2X2MAP).</string>
     <string name="osmand_w_status_title">V2X2MAP-Status</string>
     <string name="osmand_w_light_title">V2X nächste Ampel</string>
     <string name="osmand_w_speed_title">V2X Tempolimit</string>

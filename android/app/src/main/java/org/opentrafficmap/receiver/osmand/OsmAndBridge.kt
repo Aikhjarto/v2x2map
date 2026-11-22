@@ -51,8 +51,8 @@ import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * OsmAnd add-on: mirrors the live V2X picture ([V2xHub]) into an installed OsmAnd through its AIDL
- * API — a map layer "V2X2MAP" with vehicles (CAM), traffic lights (SPATEM) and hazards (DENM), plus
- * a status widget. Only changes are sent, about once per second.
+ * API — map layers "V2X2MAP vehicles" (CAM), "V2X2MAP traffic lights" (SPATEM) and "V2X2MAP hazards"
+ * (DENM), plus widgets. Only changes are sent, about once per second.
  *
  * OsmAnd accepts calls only from apps the user enabled in OsmAnd (Plugins → connected apps; newer
  * versions also show a permission dialog). Until then calls are rejected and [status] is
@@ -67,6 +67,13 @@ object OsmAndBridge {
     const val ACTION_REQUEST_PERMISSIONS = "net.osmand.aidl.REQUEST_PERMISSIONS"
     private val PACKAGES = listOf("net.osmand.plus", "net.osmand", "net.osmand.dev")
     private const val LAYER_ID = "v2x2map"
+    /** Hazards get their own layer: warning triangles already at town-level zoom. (OsmAnd's Configure map has one
+     *  switch per app, not per layer, so all V2X2MAP layers are shown or hidden together.) */
+    private const val LAYER_HAZARDS = "v2x2map_hazards"
+    /** Traffic lights get their own layer too: OsmAnd redraws a whole layer on every point change, so
+     *  on a shared layer each moving vehicle would make the lights blink. */
+    private const val LAYER_LIGHTS = "v2x2map_lights"
+    private val LAYERS = listOf(LAYER_ID, LAYER_LIGHTS, LAYER_HAZARDS)
     private const val WIDGET_ID = "v2x2map_status"
     private const val WIDGET_LIGHT = "v2x2map_light"
     private const val WIDGET_SPEED = "v2x2map_speed"
@@ -83,6 +90,7 @@ object OsmAndBridge {
     private var bound = false
     private var layerReady = false
     private val sent = HashMap<String, String>()          // point id -> signature of the last sent state
+    private val sentLayer = HashMap<String, String>()     // point id -> layer it was added to
     private var icons: Map<String, Uri> = emptyMap()
     private val handler: Handler by lazy { Handler(HandlerThread("osmand-bridge").apply { start() }.looper) }
 
@@ -147,10 +155,10 @@ object OsmAndBridge {
         stopLocation()
         api?.let { a ->
             WIDGETS.forEach { id -> runCatching { a.removeMapWidget(RemoveMapWidgetParams(id)) } }
-            runCatching { a.removeMapLayer(RemoveMapLayerParams(LAYER_ID)) }
+            LAYERS.forEach { id -> runCatching { a.removeMapLayer(RemoveMapLayerParams(id)) } }
         }
         if (bound) runCatching { app?.unbindService(connection) }
-        bound = false; api = null; layerReady = false; sent.clear()
+        bound = false; api = null; layerReady = false; sent.clear(); sentLayer.clear(); lastLook.clear()
         setStatus(Status.OFF)
     }
 
@@ -160,7 +168,7 @@ object OsmAndBridge {
             handler.post(setupTask)
         }
         override fun onServiceDisconnected(name: ComponentName) {
-            api = null; layerReady = false; sent.clear()
+            api = null; layerReady = false; sent.clear(); sentLayer.clear(); lastLook.clear()
             handler.removeCallbacks(syncTask)
             setStatus(Status.CONNECTING)                     // Android reconnects by itself
         }
@@ -174,14 +182,26 @@ object OsmAndBridge {
             try {
                 if (icons.isEmpty()) icons = OsmAndIcons.prepare(ctx)
                 osmandPackage?.let { pkg -> icons.values.forEach { ctx.grantUriPermission(pkg, it, Intent.FLAG_GRANT_READ_URI_PERMISSION) } }
-                runCatching { a.removeMapLayer(RemoveMapLayerParams(LAYER_ID)) }
-                val layer = AMapLayer(LAYER_ID, "V2X2MAP", 5.5f, emptyList()).apply {
+                LAYERS.forEach { id -> runCatching { a.removeMapLayer(RemoveMapLayerParams(id)) } }
+                val layer = AMapLayer(LAYER_ID, "V2X2MAP vehicles", 5.5f, emptyList()).apply {
                     isImagePoints = true
                     setCirclePointZoomBounds(0, 10)
                     setSmallPointZoomBounds(11, 14)
                     setBigPointZoomBounds(15, 22)
                 }
-                if (!a.addMapLayer(AddMapLayerParams(layer))) {
+                val lightLayer = AMapLayer(LAYER_LIGHTS, "V2X2MAP traffic lights", 5.55f, emptyList()).apply {
+                    isImagePoints = true
+                    setCirclePointZoomBounds(0, 10)
+                    setSmallPointZoomBounds(11, 14)
+                    setBigPointZoomBounds(15, 22)
+                }
+                val hazardLayer = AMapLayer(LAYER_HAZARDS, "V2X2MAP hazards", 5.6f, emptyList()).apply {
+                    isImagePoints = true
+                    setCirclePointZoomBounds(0, 7)
+                    setSmallPointZoomBounds(8, 10)
+                    setBigPointZoomBounds(11, 22)
+                }
+                if (listOf(layer, lightLayer, hazardLayer).any { !a.addMapLayer(AddMapLayerParams(it)) }) {
                     setStatus(Status.NOT_ENABLED)
                     handler.postDelayed(this, RETRY_MS)
                     return
@@ -190,7 +210,7 @@ object OsmAndBridge {
                 lastWidget.clear()
                 widgets(ctx).forEach { w -> runCatching { a.addMapWidget(AddMapWidgetParams(w)) }; lastWidget[w.id] = key(w) }
                 startLocation(ctx)
-                layerReady = true; sent.clear()
+                layerReady = true; sent.clear(); sentLayer.clear(); lastLook.clear()
                 setStatus(Status.ACTIVE)
                 handler.removeCallbacks(syncTask); handler.post(syncTask)
             } catch (e: Exception) {
@@ -229,15 +249,15 @@ object OsmAndBridge {
         for ((id, p) in wanted) {
             val sig = signature(p)
             when (sent[id]) {
-                null -> if (a.addMapPoint(AddMapPointParams(LAYER_ID, p))) sent[id] = sig
+                null -> if (a.addMapPoint(AddMapPointParams(p.layerId, p))) { sent[id] = sig; sentLayer[id] = p.layerId }
                         else { setStatus(Status.NOT_ENABLED); layerReady = false; handler.postDelayed(setupTask, RETRY_MS); return }
                 sig -> {}
-                else -> if (a.updateMapPoint(UpdateMapPointParams(LAYER_ID, p, true))) sent[id] = sig
+                else -> if (a.updateMapPoint(UpdateMapPointParams(p.layerId, p, true))) sent[id] = sig
             }
         }
         sent.keys.filter { it !in wanted }.forEach { id ->
-            runCatching { a.removeMapPoint(RemoveMapPointParams(LAYER_ID, id)) }
-            sent.remove(id)
+            runCatching { a.removeMapPoint(RemoveMapPointParams(sentLayer[id] ?: LAYER_ID, id)) }
+            sent.remove(id); sentLayer.remove(id)
         }
 
         val ctx = app ?: return
@@ -265,7 +285,7 @@ object OsmAndBridge {
             else -> Triple("%d m".format(Locale.ROOT, ahead.distM.toInt()), when (ahead.signal.phase) {
                 SignalPhase.RED -> ctx.getString(R.string.osmand_w_red); SignalPhase.YELLOW -> ctx.getString(R.string.osmand_w_amber)
                 SignalPhase.GREEN -> ctx.getString(R.string.osmand_w_green); SignalPhase.UNKNOWN -> ctx.getString(R.string.osmand_w_light)
-            }, when (ahead.signal.phase) {
+            } + (ahead.signal.remainingS()?.let { " · $it s" } ?: ""), when (ahead.signal.phase) {
                 SignalPhase.RED -> "light_red"; SignalPhase.YELLOW -> "light_yellow"
                 SignalPhase.GREEN -> "light_green"; SignalPhase.UNKNOWN -> "light_unknown"
             })
@@ -315,21 +335,36 @@ object OsmAndBridge {
         }
         val params = HashMap<String, String>()
         icons[kind]?.let { params[AMapPoint.POINT_IMAGE_URI_PARAM] = it.toString() }
-        return AMapPoint("sig_${s.id}", "L", "Traffic light: $label (V2X)", "V2X traffic light (SPATEM)", LAYER_ID,
-            color, ALatLon(s.pos.lat, s.pos.lon), listOf("intersection/station ${s.id}", "first signal group only"), params)
+        // No countdown on the point itself: every point change makes OsmAnd's OpenGL renderer drop and
+        // rebuild all symbols of the layer, so the icon would blink once per second. The countdown is
+        // shown in the "next traffic light" widget instead; the point only changes with the phase.
+        val shortName = "L"
+        val id = "sig_${s.id}"
+        // OsmAnd's OpenGL renderer caches AIDL points and only redraws them when a point count or
+        // position changes — not when just the icon changes. So on every phase change the point is
+        // nudged alternately by 1.1e-5° (~1.2 m, about one pixel): OsmAnd treats positions closer
+        // than 1e-5° as equal (MapUtils.DEFAULT_LATLON_PRECISION).
+        val look = kind
+        if (lastLook[id] != look) { lastLook[id] = look; nudge[id] = !(nudge[id] ?: false) }
+        val dLat = if (nudge[id] == true) 1.1e-5 else 0.0
+        return AMapPoint(id, shortName, "Traffic light: $label (V2X)", "V2X traffic light (SPATEM)", LAYER_LIGHTS,
+            color, ALatLon(s.pos.lat + dLat, s.pos.lon), listOf("intersection/station ${s.id}", "first signal group only"), params)
     }
+
+    private val lastLook = HashMap<String, String>()
+    private val nudge = HashMap<String, Boolean>()
 
     private fun point(h: V2xHazard): AMapPoint {
         val params = HashMap<String, String>()
         icons["hazard"]?.let { params[AMapPoint.POINT_IMAGE_URI_PARAM] = it.toString() }
         val details = listOfNotNull(h.causeCode?.let { "cause $it${h.subCauseCode?.let { s -> "/$s" } ?: ""}" })
         return AMapPoint("haz_${h.key}", "!", "${h.label.replaceFirstChar { it.uppercase() }} (V2X)", "V2X hazard (DENM)",
-            LAYER_ID, 0xFFFF6D00.toInt(), ALatLon(h.pos.lat, h.pos.lon), details, params)
+            LAYER_HAZARDS, 0xFFFF6D00.toInt(), ALatLon(h.pos.lat, h.pos.lon), details, params)
     }
 
-    /** What makes a point "changed": position (~1 m), name, icon and details. */
+    /** What makes a point "changed": position (incl. the redraw nudge), labels, icon and details. */
     private fun signature(p: AMapPoint): String =
-        "%.5f,%.5f|%s|%s|%s".format(Locale.ROOT, p.location.latitude, p.location.longitude, p.fullName,
+        "%.7f,%.7f|%s|%s|%s|%s".format(Locale.ROOT, p.location.latitude, p.location.longitude, p.shortName, p.fullName,
             p.params[AMapPoint.POINT_IMAGE_URI_PARAM], p.details.joinToString(";"))
 
     private val VEHICLE_COLORS = mapOf("car" to 0xFF00897B.toInt(), "bus" to 0xFF8E24AA.toInt(),
