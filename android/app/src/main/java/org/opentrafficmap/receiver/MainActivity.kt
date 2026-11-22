@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var locationOverlay: MyLocationNewOverlay
     private lateinit var fused: FusedLocationProviderClient
     private lateinit var markers: MarkerLayer
+    private lateinit var intersections: IntersectionOverlay
     private lateinit var geiger: GeigerCounter
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -163,6 +164,8 @@ class MainActivity : AppCompatActivity() {
         binding.map.setMultiTouchControls(true)
         binding.map.controller.setZoom(6.0)
         binding.map.controller.setCenter(GeoPoint(51.0, 10.0))
+        intersections = IntersectionOverlay(resources.displayMetrics.density) { v, lane -> showLaneInfo(v, lane) }
+        binding.map.overlays.add(intersections)                // MAPEM lanes, below the own position
         locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(this), binding.map)
         binding.map.overlays.add(locationOverlay)
 
@@ -651,8 +654,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** MAPEM lanes from the live V2X picture (also the demo intersection); called every second. */
+    private fun refreshIntersections() {
+        val views = V2xHub.snapshot().intersections
+        if (views.isEmpty() && intersections.views.isEmpty()) return
+        intersections.views = views
+        binding.map.invalidate()
+    }
+
+    private fun showLaneInfo(v: org.opentrafficmap.receiver.nav.IntersectionView, lane: org.opentrafficmap.receiver.nav.MapLane) {
+        val de = resources.configuration.locales[0].language == "de"
+        AlertDialog.Builder(this)
+            .setTitle(org.opentrafficmap.receiver.nav.IntersectionText.title(v, de))
+            .setMessage(org.opentrafficmap.receiver.nav.IntersectionText.describe(v, lane, System.currentTimeMillis(), de))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
     private fun updateSpatLight(loc: Location) {
         if (!spatLightEnabled) return
+        // Live picture first: with MAPEM this is the light of the driver's lane, facing him.
+        val bearing = if (loc.hasBearing() && loc.speed > 1f) loc.bearing.toDouble() else null
+        org.opentrafficmap.receiver.nav.V2xAnalyzer.analyze(V2xHub.snapshot(),
+            org.opentrafficmap.receiver.nav.LatLon(loc.latitude, loc.longitude), bearing, null).signal?.let { ahead ->
+            binding.spatLight.visibility = View.VISIBLE
+            applyPhaseColors(when (ahead.signal.phase) {
+                org.opentrafficmap.receiver.nav.SignalPhase.RED -> SpatTemParser.Phase.RED
+                org.opentrafficmap.receiver.nav.SignalPhase.YELLOW -> SpatTemParser.Phase.YELLOW
+                org.opentrafficmap.receiver.nav.SignalPhase.GREEN -> SpatTemParser.Phase.GREEN
+                org.opentrafficmap.receiver.nav.SignalPhase.UNKNOWN -> SpatTemParser.Phase.UNKNOWN
+            })
+            return
+        }
+        // Loaded recordings are not in the live picture: nearest SPATEM sender ahead.
         val now = System.currentTimeMillis()
         spatRsus.entries.removeAll { now - it.value.lastSeenMs > 30_000 }
         if (spatRsus.isEmpty()) { binding.spatLight.visibility = View.GONE; return }
@@ -714,6 +748,8 @@ class MainActivity : AppCompatActivity() {
             binding.logStats.text = getString(R.string.log_stats, totalFrames.toInt(), rate) + suffix +
                 (viewingRecording?.let { "  ·  $it" } ?: "")
             if (::markers.isInitialized && viewingRecording == null) markers.prune()
+            if (::intersections.isInitialized) refreshIntersections()
+            lastLocation?.let { updateSpatLight(it) }        // phases change without new GPS fixes
             mainHandler.postDelayed(this, 1_000)
         }
     }

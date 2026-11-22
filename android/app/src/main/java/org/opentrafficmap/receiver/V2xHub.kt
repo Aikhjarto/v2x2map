@@ -10,7 +10,9 @@ import java.util.concurrent.CopyOnWriteArraySet
  *  - CAM    → vehicles (one per station, 30 s TTL)
  *  - DENM   → hazards at the DENM *event* position (falls back to sender position),
  *             removed on cancellation, TTL = validityDuration (capped at 30 min)
- *  - SPATEM → signal heads at the RSU position (30 s TTL)
+ *  - SPATEM → signal-group states per intersection (30 s TTL). With the intersection's MAPEM
+ *             (topology, 2 min TTL) one light per approach and signal group at its stop line,
+ *             facing the direction of travel; without MAPEM one light (first group) at the RSU.
  *  - IVIM   → speed-limit zones of road signs (until validTo, at most 10 min after the last
  *             reception; removed on cancellation/negation). Needs [messageDecoder].
  */
@@ -22,12 +24,16 @@ object V2xHub {
     private const val SIGNAL_TTL_MS = 30_000L
     private const val MAX_HAZARD_TTL_MS = 30 * 60_000L
     private const val SPEED_ZONE_TTL_MS = 10 * 60_000L
+    private const val MAP_TTL_MS = 2 * 60_000L
 
     private val lock = Any()
     private val vehicles = HashMap<Long, V2xVehicle>()
     private val hazards = HashMap<String, V2xHazard>()
     private val signals = HashMap<Long, V2xSignal>()
     private val speedZones = HashMap<String, IvimSpeedZone>()
+    private val maps = HashMap<Long, IntersectionMap>()
+    private class SpatEntry(val spat: IntersectionSpat, val rsuPos: LatLon?)
+    private val spats = HashMap<Long, SpatEntry>()
 
     /** Decodes a raw frame to its ITS message (set by [App] with the generated ASN.1 tables). */
     @Volatile var messageDecoder: ((ByteArray) -> org.opentrafficmap.receiver.asn1.AsnValue?)? = null
@@ -43,8 +49,14 @@ object V2xHub {
     fun addListener(l: Listener) { listeners += l }
     fun removeListener(l: Listener) { listeners -= l }
 
-    fun ingest(f: Frame) {
+    /**
+     * @param recordedAtMs when the frame was originally received (replay of a recording): absolute
+     *   times in the message (SPATEM TimeMarks, IVIM validity) are read relative to it and shifted to now.
+     */
+    fun ingest(f: Frame, recordedAtMs: Long? = null) {
         val now = clock()
+        val msgNow = recordedAtMs ?: now
+        val shift = now - msgNow
         synchronized(lock) {
             lastFrameMs = now
             frameTimes.addLast(now)
@@ -67,14 +79,23 @@ object V2xHub {
                             text.cause(cause?.causeCode), now, now + ttl)
                     }
                 }
-                ItsG5Decoder.MsgType.IVIM -> ingestIvim(f.payload, now)
-                ItsG5Decoder.MsgType.SPATEM -> if (ll != null) {
-                    // full decode for the time to the next change; quick parser as fallback
-                    val full = try { messageDecoder?.invoke(f.payload) } catch (_: Exception) { null }
-                        ?.takeIf { it.at("spat") != null }
-                        ?.let { org.opentrafficmap.receiver.asn1.SpatemParser.parse(it, now) }
-                    signals[f.stationId ?: 0L] = V2xSignal(f.stationId ?: 0L, ll,
-                        full?.phase ?: f.spatPhase.toSignal(), now, endsAtMs = full?.endsAtMs)
+                ItsG5Decoder.MsgType.IVIM -> ingestIvim(f.payload, now, shift)
+                ItsG5Decoder.MsgType.MAPEM -> {
+                    val v = decode(f.payload)?.takeIf { it.at("map") != null }
+                    v?.let { org.opentrafficmap.receiver.asn1.MapemParser.parse(it, now) }?.forEach { maps[it.key] = it }
+                }
+                ItsG5Decoder.MsgType.SPATEM -> {
+                    // full decode: all signal groups with timing; quick parser (first group) as fallback
+                    val all = decode(f.payload)?.takeIf { it.at("spat") != null }
+                        ?.let { org.opentrafficmap.receiver.asn1.SpatemParser.parseAll(it, msgNow) }.orEmpty()
+                        .map { sp -> if (shift == 0L) sp else sp.copy(lastSeenMs = now,
+                            groups = sp.groups.mapValues { (_, g) -> g.copy(endsAtMs = g.endsAtMs?.plus(shift)) }) }
+                    if (all.isNotEmpty()) {
+                        signals.remove(f.stationId ?: 0L)
+                        all.forEach { spats[it.key] = SpatEntry(it, ll) }
+                    } else if (ll != null) {
+                        signals[f.stationId ?: 0L] = V2xSignal(f.stationId ?: 0L, ll, f.spatPhase.toSignal(), now)
+                    }
                 }
                 else -> {}
             }
@@ -82,12 +103,14 @@ object V2xHub {
         listeners.forEach { it.onV2xChanged() }
     }
 
+    private fun decode(payload: ByteArray) = try { messageDecoder?.invoke(payload) } catch (_: Exception) { null }
+
     /** Called under [lock]. */
-    private fun ingestIvim(payload: ByteArray, now: Long) {
-        val v = try { messageDecoder?.invoke(payload) } catch (_: Exception) { null }?.takeIf { it.at("ivi") != null } ?: return
+    private fun ingestIvim(payload: ByteArray, now: Long, shift: Long = 0) {
+        val v = decode(payload)?.takeIf { it.at("ivi") != null } ?: return
         val r = org.opentrafficmap.receiver.asn1.IvimParser.parse(v, now) ?: return
         speedZones.keys.removeAll { it.startsWith(r.iviKey + ":") }
-        if (!r.withdrawn) r.zones.forEach { speedZones[it.key] = it }
+        if (!r.withdrawn) r.zones.forEach { speedZones[it.key] = if (shift == 0L) it else it.copy(validToMs = it.validToMs?.plus(shift)) }
     }
 
     /** Active speed-limit zones from IVIM road signs. */
@@ -105,9 +128,22 @@ object V2xHub {
             vehicles.values.removeAll { now - it.lastSeenMs > VEHICLE_TTL_MS }
             signals.values.removeAll { !it.simulated && now - it.lastSeenMs > SIGNAL_TTL_MS }
             hazards.values.removeAll { now > it.expiresMs }
+            maps.values.removeAll { !it.simulated && now - it.lastSeenMs > MAP_TTL_MS }
+            spats.values.removeAll { !it.spat.simulated && now - it.spat.lastSeenMs > SIGNAL_TTL_MS }
             while (frameTimes.isNotEmpty() && now - frameTimes.first() > 60_000) frameTimes.removeFirst()
-            return V2xSnapshot(vehicles.values.toList(), hazards.values.toList(), signals.values.toList(),
-                lastFrameMs, frameTimes.size)
+            val derived = spats.values.flatMap { e ->
+                val map = maps[e.spat.key]
+                if (map != null) IntersectionSignals.derive(map, e.spat, now)
+                else listOfNotNull(e.rsuPos?.let { pos ->
+                    val g = e.spat.firstGroup?.let { e.spat.groups[it] }
+                    V2xSignal((e.spat.key shl 20) or 0xFFFFF, pos, g?.phase ?: SignalPhase.UNKNOWN, e.spat.lastSeenMs,
+                        simulated = e.spat.simulated, endsAtMs = g?.endsAtMs, signalGroup = e.spat.firstGroup,
+                        intersectionKey = e.spat.key)
+                })
+            }
+            val views = maps.values.map { IntersectionView(it, spats[it.key]?.spat?.groups.orEmpty()) }
+            return V2xSnapshot(vehicles.values.toList(), hazards.values.toList(), signals.values.toList() + derived,
+                lastFrameMs, frameTimes.size, views)
         }
     }
 
@@ -115,15 +151,21 @@ object V2xHub {
 
     fun putSimulatedHazard(h: V2xHazard) { synchronized(lock) { hazards[h.key] = h }; listeners.forEach { it.onV2xChanged() } }
     fun putSimulatedSignal(s: V2xSignal) { synchronized(lock) { signals[s.id] = s }; listeners.forEach { it.onV2xChanged() } }
+    fun putSimulatedIntersection(map: IntersectionMap, spat: IntersectionSpat) {
+        synchronized(lock) { maps[map.key] = map; spats[spat.key] = SpatEntry(spat, map.ref) }
+        listeners.forEach { it.onV2xChanged() }
+    }
     fun clearSimulated() {
         synchronized(lock) {
             hazards.values.removeAll { it.simulated }
             signals.values.removeAll { it.simulated }
+            maps.values.removeAll { it.simulated }
+            spats.values.removeAll { it.spat.simulated }
         }
         listeners.forEach { it.onV2xChanged() }
     }
 
-    fun clear() { synchronized(lock) { vehicles.clear(); hazards.clear(); signals.clear(); speedZones.clear(); frameTimes.clear() } }
+    fun clear() { synchronized(lock) { vehicles.clear(); hazards.clear(); signals.clear(); speedZones.clear(); maps.clear(); spats.clear(); frameTimes.clear() } }
 
     private fun SpatTemParser.Phase?.toSignal() = when (this) {
         SpatTemParser.Phase.RED -> SignalPhase.RED

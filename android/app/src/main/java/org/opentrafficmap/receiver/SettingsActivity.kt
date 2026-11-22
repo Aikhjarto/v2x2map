@@ -234,14 +234,14 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** Debug only: cycling SPATEM light ~55 m north and DENM roadworks ~60 m east of the last position (DemoV2x). */
+    /** Debug only: signalised demo intersection ~55 m north and DENM roadworks ~60 m east of the last position (DemoV2x). */
     private fun insertDemoV2x() {
         try {
             com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this).lastLocation
                 .addOnSuccessListener { l ->
                     if (l == null) { Toast.makeText(this, "No position yet", Toast.LENGTH_SHORT).show(); return@addOnSuccessListener }
                     DemoV2x.start(org.opentrafficmap.receiver.nav.LatLon(l.latitude, l.longitude))
-                    Toast.makeText(this, "Demo light (cycling) + hazard inserted (10 min)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Demo intersection (cycling lights) + hazard inserted (10 min)", Toast.LENGTH_SHORT).show()
                 }
         } catch (_: SecurityException) {
             Toast.makeText(this, "Location permission missing", Toast.LENGTH_SHORT).show()

@@ -249,6 +249,13 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
             }
         }
 
+        // --- MAPEM lanes (zoomed in): ingress lanes in their signal's colour, connections thin
+        if (st != null && camZoom >= 16.0 && st.v2x.intersections.isNotEmpty()) {
+            val pxPerM = (256.0 * 2.0.pow(z0) / (40_075_016.686 * cos(Math.toRadians(center.lat))) * s).toFloat()
+            drawLanes(c, st, { p -> world(p, z0).let { (wx, wy) -> PointF(((wx - cwx) * s).toFloat(), ((wy - cwy) * s).toFloat()) } },
+                pxPerM, dens)
+        }
+
         // --- route
         st?.route?.let { r ->
             val path = Path(); val done = Path()
@@ -341,6 +348,40 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         for (h in st.v2x.hazards) {
             val p = toScreen(h.pos); if (!onScreen(p)) continue
             drawHazard(c, p.x, p.y, d, h.key in aheadKeys)
+        }
+    }
+
+    private val lanePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+
+    private fun drawLanes(c: Canvas, st: RenderState, px: (LatLon) -> PointF, pxPerM: Float, d: Float) {
+        val w = (2.6f * pxPerM).coerceAtLeast(3f * d)
+        for (v in st.v2x.intersections) {
+            for (lane in v.map.lanes) {
+                if (lane.points.size < 2 || lane.kind == org.opentrafficmap.receiver.nav.LaneKind.SIDEWALK) continue
+                val path = Path()
+                lane.points.forEachIndexed { i, p -> val q = px(p); if (i == 0) path.moveTo(q.x, q.y) else path.lineTo(q.x, q.y) }
+                val walk = lane.kind == org.opentrafficmap.receiver.nav.LaneKind.CROSSWALK
+                lanePaint.strokeWidth = if (walk) w * 0.5f else w
+                lanePaint.color = when {
+                    walk -> 0x99FFFFFF.toInt()
+                    lane.ingress && lane.primaryGroup != null ->
+                        (org.opentrafficmap.receiver.IntersectionOverlay.phaseColor(v.phaseOf(lane)) and 0x00FFFFFF) or 0xCC000000.toInt()
+                    else -> 0x8890A4AE.toInt()
+                }
+                c.drawPath(path, lanePaint)
+            }
+            val centre = px(v.map.ref)
+            lanePaint.strokeWidth = 2f * d
+            for (lane in v.map.lanes) {
+                if (!lane.ingress || lane.points.isEmpty()) continue
+                val from = px(lane.points[0])
+                for (conn in lane.connections) {
+                    val to = v.map.lane(conn.toLane)?.points?.firstOrNull()?.let(px) ?: continue
+                    lanePaint.color = conn.signalGroup?.let { v.groups[it]?.phase }
+                        ?.let(org.opentrafficmap.receiver.IntersectionOverlay::phaseColor) ?: 0xFF90A4AE.toInt()
+                    c.drawPath(Path().apply { moveTo(from.x, from.y); quadTo(centre.x, centre.y, to.x, to.y) }, lanePaint)
+                }
+            }
         }
     }
 

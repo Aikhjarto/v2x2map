@@ -29,6 +29,14 @@ data class V2xSignal(
     val simulated: Boolean = false,
     /** Absolute time of the next phase change (SPATEM timing), null if not sent. */
     val endsAtMs: Long? = null,
+    /** Direction of travel the light applies to (from MAPEM lanes); null = unknown (RSU position only). */
+    val headingDeg: Double? = null,
+    val signalGroup: Int? = null,
+    val intersectionKey: Long? = null,
+    /** Geometry of the ingress lanes this light governs (first point = stop line). */
+    val lanes: List<List<LatLon>> = emptyList(),
+    /** True if the light governs going straight (preferred when lanes cannot be told apart). */
+    val straight: Boolean = true,
 ) {
     /** Whole seconds until the next change, or null. */
     fun remainingS(nowMs: Long = System.currentTimeMillis()): Int? =
@@ -41,6 +49,8 @@ data class V2xSnapshot(
     val signals: List<V2xSignal>,
     val lastFrameMs: Long,
     val framesLastMinute: Int,
+    /** Intersections with MAPEM topology, for drawing lanes. */
+    val intersections: List<IntersectionView> = emptyList(),
 ) {
     companion object { val EMPTY = V2xSnapshot(emptyList(), emptyList(), emptyList(), 0, 0) }
 }
@@ -78,14 +88,14 @@ object V2xAnalyzer {
             d?.let { HazardAhead(h, it) }
         }.sortedBy { it.distM }
 
-        val signal = snap.signals.mapNotNull { s ->
+        val signal = pickSignal(snap.signals.filter { IntersectionSignals.facesDriver(it, bearing) }.mapNotNull { s ->
             val d = if (engine != null) engine.aheadOnRoute(s.pos, SIGNAL_LATERAL_M, SIGNAL_LOOKAHEAD_M)?.first
                     else inCone(pos, bearing, s.pos, 400.0, 70.0) ?: run {
                         // no heading yet (standing still): nearest within 250 m
                         if (bearing == null) Geo.distance(pos, s.pos).takeIf { it < 250 } else null
                     }
             d?.let { SignalAhead(s, it) }
-        }.minByOrNull { it.distM }
+        }, pos)
 
         val emergency = snap.vehicles.filter { it.isEmergency }
             .map { it to Geo.distance(pos, it.pos) }
@@ -94,6 +104,26 @@ object V2xAnalyzer {
 
         return V2xAhead(signal, hazards, emergency)
     }
+
+    /**
+     * The nearest light ahead. Lights of the same intersection that face the driver (e.g. the
+     * left-turn and the straight-on lane of one approach) are told apart by the driver's sideways
+     * distance to their MAPEM lanes; straight-on wins when that is not clearly different
+     * (GPS is about as accurate as a lane is wide).
+     */
+    internal fun pickSignal(cands: List<SignalAhead>, pos: LatLon): SignalAhead? {
+        val nearest = cands.minByOrNull { it.distM } ?: return null
+        val key = nearest.signal.intersectionKey ?: return nearest
+        val same = cands.filter { it.signal.intersectionKey == key && it.signal.lanes.isNotEmpty() }
+        if (same.size < 2) return nearest
+        return same.minByOrNull { c ->
+            val lat = c.signal.lanes.mapNotNull { IntersectionSignals.lateralToLane(it, pos) }.minOrNull() ?: 1e9
+            lat + if (c.signal.straight) 0.0 else LANE_PREFERENCE_M
+        } ?: nearest
+    }
+
+    /** Extra sideways distance a turning lane needs to lose against the straight-on lane. */
+    const val LANE_PREFERENCE_M = 1.5
 
     /** Distance to [p] if it lies within ±[halfAngle]° of [bearing] and [maxDist]; null otherwise. */
     private fun inCone(pos: LatLon, bearing: Double?, p: LatLon, maxDist: Double, halfAngle: Double): Double? {

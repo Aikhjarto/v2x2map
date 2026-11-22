@@ -37,6 +37,11 @@ object Geo {
     /** Normalises [deg] to [0, 360). */
     fun normDeg(deg: Double): Double = ((deg % 360.0) + 360.0) % 360.0
 
+    /** [p] moved by [eastM] / [northM] metres (local flat approximation, fine for < 10 km). */
+    fun offset(p: LatLon, eastM: Double, northM: Double): LatLon = LatLon(
+        p.lat + Math.toDegrees(northM / EARTH_R),
+        p.lon + Math.toDegrees(eastM / (EARTH_R * cos(Math.toRadians(p.lat)))))
+
     fun interpolate(a: LatLon, b: LatLon, t: Double): LatLon =
         LatLon(a.lat + (b.lat - a.lat) * t, a.lon + (b.lon - a.lon) * t)
 
