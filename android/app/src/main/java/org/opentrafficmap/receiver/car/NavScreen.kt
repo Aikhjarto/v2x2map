@@ -88,7 +88,8 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
 
     private fun actionStrip(): ActionStrip {
         val de = nav.text.german
-        val a = mutableListOf<Action>()                 // NavigationTemplate: at most 4 actions
+        // NavigationTemplate allows 4 actions: listed by priority, the rest is left out.
+        val a = mutableListOf<Action>()
         if (nav.navigating) {
             a.add(Action.Builder().setTitle(if (de) "Beenden" else "Exit")
                 .setOnClickListener { nav.stopNavigation() }.build())
@@ -97,25 +98,34 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
                     .setTitle(if (de) "Umfahren" else "Avoid")
                     .setOnClickListener { nav.avoidHazard(h.hazard) }.build())
             }
-            if (nav.isDebugBuild || nav.simulating) a.add(Action.Builder().setTitle(if (nav.simulating) "Sim ■" else "Demo")
-                .setOnClickListener { nav.startSimulation() }.build())
         } else {
             a.add(Action.Builder().setIcon(CarIcons.search(carContext))
                 .setTitle(if (de) "Ziel" else "Search")
                 .setOnClickListener { openSearch() }.build())
-            // Same button in every link state; the state itself is shown in the V2X chip on the map.
-            val v2xTitle = when {
-                !BtSession.isActive -> "V2X ○"
-                BtSession.state == BluetoothController.State.CONNECTED -> "V2X ●"
-                else -> "V2X …"
-            }
-            a.add(Action.Builder().setTitle(v2xTitle).setOnClickListener { toggleV2x() }.build())
         }
+        a.add(snapAction())
         a.add(Action.Builder().setIcon(if (nav.muted) CarIcons.volumeOff(carContext) else CarIcons.volumeOn(carContext))
             .setOnClickListener { nav.toggleMute() }.build())
-        if (a.size < 4) a.add(Action.Builder().setIcon(CarIcons.settings(carContext))
-            .setOnClickListener { screenManager.push(MapOptionsScreen(carContext, nav)) }.build())
-        return ActionStrip.Builder().apply { a.forEach { addAction(it) } }.build()
+        if (nav.navigating && (nav.isDebugBuild || nav.simulating)) a.add(Action.Builder().setTitle(if (nav.simulating) "Sim ■" else "Demo")
+            .setOnClickListener { nav.startSimulation() }.build())
+        // V2X connect/disconnect lives in the options (it connects automatically when the car screen opens)
+        a.add(Action.Builder().setIcon(CarIcons.settings(carContext))
+            .setOnClickListener { screenManager.push(MapOptionsScreen(carContext, nav, ::toggleV2x)) }.build())
+        return ActionStrip.Builder().apply { a.take(4).forEach { addAction(it) } }.build()
+    }
+
+    /** Snap to road on/off (like the compass button for the map orientation). */
+    private fun snapAction(): Action {
+        val on = CarPrefs.roadSnap(carContext)
+        return Action.Builder().setIcon(if (on) CarIcons.snapOn(carContext) else CarIcons.snapOff(carContext))
+            .setOnClickListener {
+                CarPrefs.setRoadSnap(carContext, !on)
+                nav.toast(when {
+                    nav.text.german -> if (!on) "Auf Straße einrasten: an" else "Auf Straße einrasten: aus (GPS-Position)"
+                    else -> if (!on) "Snap to road: on" else "Snap to road: off (raw GPS)"
+                })
+                nav.optionsChanged(); invalidate()
+            }.build()
     }
 
     private fun mapActionStrip(): ActionStrip {

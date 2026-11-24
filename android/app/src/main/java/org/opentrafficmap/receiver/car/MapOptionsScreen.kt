@@ -3,14 +3,35 @@ package org.opentrafficmap.receiver.car
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.*
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import org.opentrafficmap.receiver.BtSession
 import org.opentrafficmap.receiver.Prefs
 
-/** Map options on the car screen (gear button): north up, other vehicles, auto-zoom. */
-class MapOptionsScreen(carContext: CarContext, private val nav: NavController) : Screen(carContext) {
+/** Options on the car screen (gear button): V2X link, snap to road, north up, other vehicles, auto-zoom. */
+class MapOptionsScreen(
+    carContext: CarContext,
+    private val nav: NavController,
+    private val toggleV2x: () -> Unit,
+) : Screen(carContext) {
+
+    private val btListener = BtSession.StateListener { _, _ -> invalidate() }
+
+    init {
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onCreate(owner: LifecycleOwner) { BtSession.addStateListener(btListener) }
+            override fun onDestroy(owner: LifecycleOwner) { BtSession.removeStateListener(btListener) }
+        })
+    }
 
     override fun onGetTemplate(): Template {
         val de = nav.text.german
         val list = ItemList.Builder()
+            .addItem(toggleRow(if (de) "V2X-Empfänger (ESP32)" else "V2X receiver (ESP32)", nav.linkHint(),
+                BtSession.isActive) { toggleV2x() })
+            .addItem(toggleRow(if (de) "Auf Straße einrasten" else "Snap to road",
+                if (de) "Pfeil auf die Straße statt auf die GPS-Position (auch Knopf oben)" else "Arrow on the road instead of the raw GPS fix (also the top button)",
+                CarPrefs.roadSnap(carContext)) { CarPrefs.setRoadSnap(carContext, it) })
             .addItem(toggleRow(if (de) "Norden oben" else "North up",
                 if (de) "Sonst zeigt die Karte in Fahrtrichtung" else "Otherwise the map turns with the driving direction",
                 CarPrefs.northUp(carContext)) { CarPrefs.setNorthUp(carContext, it) })

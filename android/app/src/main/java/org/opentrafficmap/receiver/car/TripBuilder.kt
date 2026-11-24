@@ -68,6 +68,10 @@ object CarPrefs {
     fun northUp(ctx: Context) = p(ctx).getBoolean("north_up", false)
     fun setNorthUp(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("north_up", on).apply()
 
+    /** Snap the own position to the road (route while navigating, nearby roads otherwise). */
+    fun roadSnap(ctx: Context) = p(ctx).getBoolean("road_snap", true)
+    fun setRoadSnap(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("road_snap", on).apply()
+
     /** Draw other vehicles (CAM) on the car map. */
     fun showVehicles(ctx: Context) = p(ctx).getBoolean("show_vehicles", true)
     fun setShowVehicles(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("show_vehicles", on).apply()

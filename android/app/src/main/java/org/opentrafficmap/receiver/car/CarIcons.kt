@@ -29,6 +29,8 @@ object CarIcons {
     fun northUp(ctx: CarContext) = res(ctx, R.drawable.ic_car_north_up)
     fun headingUp(ctx: CarContext) = res(ctx, R.drawable.ic_car_heading_up)
     fun settings(ctx: CarContext) = res(ctx, R.drawable.ic_car_settings)
+    fun snapOn(ctx: CarContext) = res(ctx, R.drawable.ic_car_snap_on)
+    fun snapOff(ctx: CarContext) = res(ctx, R.drawable.ic_car_snap_off)
 
     fun maneuverIcon(m: RouteManeuver): CarIcon {
         val key = "m${m.type}/${m.roundaboutExit}"

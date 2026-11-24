@@ -98,6 +98,10 @@ class RoutingClient(
     fun speedLimits(route: Route): SpeedLimits =
         SpeedLimits.parse(httpGet("$valhallaBase/trace_attributes", body = SpeedLimits.requestBody(route)), route)
 
+    /** Roads near [points] per driving direction (Valhalla /locate), for [RoadSnapper]. */
+    fun roads(points: List<LatLon>): List<DirectedRoad> =
+        RoadSnapper.parseLocate(httpGet("$valhallaBase/locate", body = RoadSnapper.locateRequest(points)))
+
     /** GET [url], or POST [body] as JSON when given. */
     private fun httpGet(url: String, body: String? = null): String {
         val c = URL(url).openConnection() as HttpURLConnection

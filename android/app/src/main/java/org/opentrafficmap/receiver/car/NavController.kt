@@ -65,6 +65,12 @@ class NavController(
     private var osmLimit: Int? = null
     private var speedLimits: SpeedLimits? = null
     private val speedWarning = SpeedWarning()
+    private val snapper = RoadSnapper()
+    private var roadFetching = false
+    private var roadFetchAtMs = 0L
+    private var roadRetryAtMs = 0L
+    /** Direction the arrow and the map follow: the road's while snapped, else the GPS heading. */
+    private var shownHeading: Double? = null
     private val avoid = mutableListOf<LatLon>()
     private val alerted = HashSet<String>()
     private var lastReroute = 0L
@@ -210,9 +216,10 @@ class NavController(
             val st = eng.update(p, acc, heading, speed)
             navState = st
             osmLimit = if (st.offRoute) null else speedLimits?.at(st.distAlong)
-            // on the route the arrow sits on the road (like OsmAnd's snap to road); raw fix when off it
-            if (!st.offRoute && st.lateralM < 25.0) renderer.onNewFix(st.snapped, speed, st.routeBearing)
-            else renderer.onNewFix(p, speed, heading)
+            // on the route the arrow sits on the road (like OsmAnd's snap to road); nearby roads when off it
+            if (CarPrefs.roadSnap(ctx) && !st.offRoute && st.lateralM < 25.0) {
+                renderer.onNewFix(st.snapped, speed, st.routeBearing); shownHeading = st.routeBearing
+            } else drawPosition(p, hdg, speed, acc)
             if (st.arrived) {
                 say(text.arrived); toast(text.arrived)
                 stopNavigation(); return
@@ -222,11 +229,36 @@ class NavController(
             }
             guidance.onProgress(r, st, speed)?.let { say(it) }
             updateTrip(r, st)
-        } else renderer.onNewFix(p, speed, if (hdg != null) heading else null)
+        } else drawPosition(p, hdg, speed, acc)
         updateSpeedLimit(speed)
         refreshV2x()
         pushRenderState()
         onChanged()
+    }
+
+    /** Own position for the map: on the nearest matching road when road snapping is on, else the raw fix. */
+    private fun drawPosition(p: LatLon, hdg: Double?, speed: Double, acc: Double) {
+        val snapOn = CarPrefs.roadSnap(ctx)
+        val s = if (snapOn) snapper.snap(p, hdg, speed, acc) else null
+        if (s != null) { renderer.onNewFix(s.pos, speed, s.bearingDeg); shownHeading = s.bearingDeg }
+        else { renderer.onNewFix(p, speed, hdg); shownHeading = heading }
+        if (snapOn) fetchRoads(p, if (speed > RoadSnapper.MIN_SPEED_MPS) hdg else null)
+    }
+
+    /** Loads the roads ahead from Valhalla when needed: about one small request per 100 m, none while known. */
+    private fun fetchRoads(p: LatLon, hdg: Double?) {
+        val now = System.currentTimeMillis()
+        if (roadFetching || now < roadRetryAtMs || now - roadFetchAtMs < 3_000) return
+        val pts = snapper.needsRoadsAround(p, hdg).takeIf { it.isNotEmpty() } ?: return
+        roadFetching = true; roadFetchAtMs = now
+        io.execute {
+            val res = runCatching { routing.roads(pts) }
+            main.post {
+                roadFetching = false
+                res.onSuccess { snapper.addRoads(it, pts); snapper.prune(p) }
+                    .onFailure { roadRetryAtMs = System.currentTimeMillis() + 30_000 }   // offline: raw fix for now
+            }
+        }
     }
 
     /**
@@ -256,7 +288,7 @@ class NavController(
 
     private fun pushRenderState() {
         renderer.state = RenderState(
-            pos = pos, headingDeg = heading, speedMps = speedMps,
+            pos = pos, headingDeg = shownHeading ?: heading, speedMps = speedMps,
             route = route, distAlong = navState?.distAlong ?: 0.0,
             v2x = V2xHub.snapshot(), ahead = ahead, navigating = navigating, text = text,
             speedLimitKph = speedLimitKph, speeding = speeding, speedLimitV2x = speedLimitFromV2x, linkHint = linkHint(),
@@ -266,14 +298,14 @@ class NavController(
         renderer.requestFrame()
     }
 
-    private fun linkHint(): String {
+    fun linkHint(): String {
         val de = text.german
         return when (org.opentrafficmap.receiver.BtSession.state) {
             org.opentrafficmap.receiver.BluetoothController.State.SCANNING -> if (de) "ESP32 wird gesucht…" else "Searching ESP32…"
             org.opentrafficmap.receiver.BluetoothController.State.CONNECTING -> if (de) "Verbinde ESP32…" else "Connecting ESP32…"
             org.opentrafficmap.receiver.BluetoothController.State.CONNECTED -> if (de) "ESP32 verbunden, warte auf Daten" else "ESP32 connected, waiting for data"
-            org.opentrafficmap.receiver.BluetoothController.State.ERROR -> if (de) "ESP32-Fehler – „V2X ○“ antippen" else "ESP32 error – tap “V2X ○”"
-            org.opentrafficmap.receiver.BluetoothController.State.IDLE -> if (de) "nicht verbunden – „V2X ○“ antippen" else "not connected – tap “V2X ○”"
+            org.opentrafficmap.receiver.BluetoothController.State.ERROR -> if (de) "ESP32-Fehler – Optionen ⚙ → V2X" else "ESP32 error – Options ⚙ → V2X"
+            org.opentrafficmap.receiver.BluetoothController.State.IDLE -> if (de) "nicht verbunden – Optionen ⚙ → V2X" else "not connected – Options ⚙ → V2X"
         }
     }
 
