@@ -79,68 +79,55 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
                 b.setNavigationInfo(TripBuilder.routingInfo(r, st))
                 b.setDestinationTravelEstimate(TripBuilder.destinationEstimate(st))
             }
-            else -> idleInfo()?.let { b.setNavigationInfo(it) }   // no card without V2X: keep the map free
+            // No card while idle, with or without V2X data: the V2X status is the chip on the map, so the
+            // map area and the controls stay the same whether the ESP32 is connected or not.
+            else -> {}
         }
         return b.build()
     }
 
-    /**
-     * Idle card: summary of the live V2X picture. Null while no V2X data arrives — the host draws
-     * this card large, so the "connect the ESP32" hint lives in the small map chip instead.
-     */
-    private fun idleInfo(): MessageInfo? {
-        val snap = org.opentrafficmap.receiver.V2xHub.snapshot()
-        val live = snap.lastFrameMs > 0 && System.currentTimeMillis() - snap.lastFrameMs < 15_000
-        if (!live) return null
-        val de = nav.text.german
-        val title = "V2X live · ${snap.framesLastMinute}/min"
-        val body = buildString {
-            append(if (de) "${snap.vehicles.size} Fahrzeuge · ${snap.signals.size} Ampeln · ${snap.hazards.size} Warnungen"
-                   else "${snap.vehicles.size} vehicles · ${snap.signals.size} signals · ${snap.hazards.size} hazards")
-            nav.ahead?.signal?.let { append("\n").append(signalText(it)) }
-        }
-        val img = nav.ahead?.signal?.let { CarIcons.signalIcon(it.signal.phase) }
-        return MessageInfo.Builder(title).setText(body).apply { img?.let { setImage(it) } }.build()
-    }
-
-    private fun signalText(s: SignalAhead): String = when (s.signal.phase) {
-        SignalPhase.RED -> nav.text.signalRed; SignalPhase.YELLOW -> nav.text.signalYellow
-        SignalPhase.GREEN -> nav.text.signalGreen; SignalPhase.UNKNOWN -> nav.text.signalUnknown
-    } + (s.signal.remainingS()?.let { " ($it s)" } ?: "") + " · " + nav.text.distance(s.distM)
-
     private fun actionStrip(): ActionStrip {
         val de = nav.text.german
-        val s = ActionStrip.Builder()
+        val a = mutableListOf<Action>()                 // NavigationTemplate: at most 4 actions
         if (nav.navigating) {
-            s.addAction(Action.Builder().setTitle(if (de) "Beenden" else "Exit")
+            a.add(Action.Builder().setTitle(if (de) "Beenden" else "Exit")
                 .setOnClickListener { nav.stopNavigation() }.build())
             nav.ahead?.hazards?.firstOrNull()?.let { h ->
-                s.addAction(Action.Builder().setIcon(CarIcons.warning(carContext))
+                a.add(Action.Builder().setIcon(CarIcons.warning(carContext))
                     .setTitle(if (de) "Umfahren" else "Avoid")
                     .setOnClickListener { nav.avoidHazard(h.hazard) }.build())
             }
-            if (nav.isDebugBuild || nav.simulating) s.addAction(Action.Builder().setTitle(if (nav.simulating) "Sim ■" else "Demo")
+            if (nav.isDebugBuild || nav.simulating) a.add(Action.Builder().setTitle(if (nav.simulating) "Sim ■" else "Demo")
                 .setOnClickListener { nav.startSimulation() }.build())
         } else {
-            s.addAction(Action.Builder().setIcon(CarIcons.search(carContext))
+            a.add(Action.Builder().setIcon(CarIcons.search(carContext))
                 .setTitle(if (de) "Ziel" else "Search")
                 .setOnClickListener { openSearch() }.build())
+            // Same button in every link state; the state itself is shown in the V2X chip on the map.
             val v2xTitle = when {
-                !BtSession.isActive -> if (de) "V2X verbinden" else "Connect V2X"
-                BtSession.state == BluetoothController.State.CONNECTED -> if (de) "V2X trennen" else "Disconnect V2X"
-                else -> if (de) "Suche abbrechen" else "Stop search"
+                !BtSession.isActive -> "V2X ○"
+                BtSession.state == BluetoothController.State.CONNECTED -> "V2X ●"
+                else -> "V2X …"
             }
-            s.addAction(Action.Builder().setTitle(v2xTitle).setOnClickListener { toggleV2x() }.build())
+            a.add(Action.Builder().setTitle(v2xTitle).setOnClickListener { toggleV2x() }.build())
         }
-        s.addAction(Action.Builder().setIcon(if (nav.muted) CarIcons.volumeOff(carContext) else CarIcons.volumeOn(carContext))
+        a.add(Action.Builder().setIcon(if (nav.muted) CarIcons.volumeOff(carContext) else CarIcons.volumeOn(carContext))
             .setOnClickListener { nav.toggleMute() }.build())
-        return s.build()
+        if (a.size < 4) a.add(Action.Builder().setIcon(CarIcons.settings(carContext))
+            .setOnClickListener { screenManager.push(MapOptionsScreen(carContext, nav)) }.build())
+        return ActionStrip.Builder().apply { a.forEach { addAction(it) } }.build()
     }
 
     private fun mapActionStrip(): ActionStrip {
         val s = ActionStrip.Builder()
+        // first slot: back to the own position while panned, otherwise north-up / driving-direction toggle
         if (!renderer.following) s.addAction(Action.Builder().setIcon(CarIcons.recenter(carContext))
             .setOnClickListener { renderer.recenter(); invalidate() }.build())
+        else {
+            val north = CarPrefs.northUp(carContext)
+            s.addAction(Action.Builder().setIcon(if (north) CarIcons.northUp(carContext) else CarIcons.headingUp(carContext))
+                .setOnClickListener { CarPrefs.setNorthUp(carContext, !north); nav.optionsChanged(); invalidate() }.build())
+        }
         s.addAction(Action.Builder().setIcon(CarIcons.zoomIn(carContext)).setOnClickListener { renderer.zoomBy(1.0) }.build())
         s.addAction(Action.Builder().setIcon(CarIcons.zoomOut(carContext)).setOnClickListener { renderer.zoomBy(-1.0) }.build())
         s.addAction(Action.PAN)

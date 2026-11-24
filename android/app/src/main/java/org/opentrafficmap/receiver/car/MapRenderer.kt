@@ -30,6 +30,10 @@ data class RenderState(
     val autoZoom: Boolean = false,
     /** Status of the ESP32 link for the V2X chip while no V2X data arrives. */
     val linkHint: String? = null,
+    /** Car option: north always up instead of the driving direction. */
+    val northUp: Boolean = false,
+    /** Car option: draw other vehicles (CAM). */
+    val showVehicles: Boolean = true,
 )
 
 /**
@@ -54,10 +58,8 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
     private var camBearing = 0.0
     private var camZoom = 16.0
 
-    // Smoothed own position (interpolates between 1 Hz GPS fixes)
-    private var fromPos: LatLon? = null
-    private var toPos: LatLon? = null
-    private var fixTime = 0L
+    // Own position between the 1 Hz GPS fixes (predicted forward, see PositionPredictor)
+    private val predictor = PositionPredictor()
     private var smoothHeading = 0.0
 
     private val thread = HandlerThread("car-map").apply { start() }
@@ -115,12 +117,9 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         requestFrame()
     }
 
-    fun onNewFix(p: LatLon) {
-        handler.post {
-            val now = SystemClock.uptimeMillis()
-            fromPos = interpolatedPos(now) ?: p
-            toPos = p; fixTime = now
-        }
+    /** New own position; [speedMps] and [headingDeg] move it forward until the next fix. */
+    fun onNewFix(p: LatLon, speedMps: Double, headingDeg: Double?) {
+        handler.post { predictor.onFix(p, speedMps, headingDeg, SystemClock.uptimeMillis()) }
     }
 
     fun requestFrame() { handler.post { if (!running) drawFrame() } }
@@ -160,12 +159,7 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         return LatLon(lat, lon)
     }
 
-    private fun interpolatedPos(now: Long): LatLon? {
-        val a = fromPos ?: return toPos
-        val b = toPos ?: return a
-        val t = ((now - fixTime) / 1000.0).coerceIn(0.0, 1.0)
-        return Geo.interpolate(a, b, t)
-    }
+    private fun interpolatedPos(now: Long): LatLon? = predictor.at(now)
 
     private fun currentCenter(): LatLon? = panCenter ?: interpolatedPos(SystemClock.uptimeMillis()) ?: state?.pos
 
@@ -207,12 +201,16 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         val autoZoom = if (st?.navigating == true || st?.autoZoom == true) SpeedZoom.zoomFor(speed) else 16.0
         camZoom += ((autoZoom + userZoomDelta).coerceIn(4.0, 19.0) - camZoom) * 0.15
         st?.headingDeg?.let { h -> if (speed > 1.5 || smoothHeading == 0.0) smoothHeading = Geo.normDeg(smoothHeading + Geo.angleDiff(h, smoothHeading) * 0.25) }
-        val targetBearing = if (following && st?.navigating == true) smoothHeading else if (following) smoothHeading else camBearing
+        val targetBearing = when {
+            st?.northUp == true -> 0.0
+            following -> smoothHeading
+            else -> camBearing
+        }
         camBearing = Geo.normDeg(camBearing + Geo.angleDiff(targetBearing, camBearing) * 0.25)
 
         val vis = if (visible.isEmpty) Rect(0, 0, width, height) else visible
         val fx = vis.exactCenterX()
-        val fy = if (following && st?.navigating == true) vis.top + vis.height() * 0.72f else vis.exactCenterY()
+        val fy = if (following && st?.navigating == true && !st.northUp) vis.top + vis.height() * 0.72f else vis.exactCenterY()
 
         val z0 = floor(camZoom).toInt().coerceIn(3, 19)
         val s = tileScale() * 2.0.pow(camZoom - z0)       // screen px per base-world px
@@ -321,8 +319,8 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
     }
 
     private fun drawV2x(c: Canvas, st: RenderState, toScreen: (LatLon) -> PointF, onScreen: (PointF) -> Boolean, d: Float) {
-        // vehicles (CAM)
-        for (v in st.v2x.vehicles) {
+        // vehicles (CAM), unless switched off in the car's map options
+        for (v in if (st.showVehicles) st.v2x.vehicles else emptyList()) {
             val p = toScreen(v.pos); if (!onScreen(p)) continue
             c.save(); c.translate(p.x, p.y)
             v.headingDeg?.let { c.rotate((it - camBearing).toFloat()) }
@@ -332,7 +330,7 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
                 v.stationType in 7..8 -> 0xFF6D4C41.toInt()                         // trucks
                 else -> 0xFF00897B.toInt()
             }
-            val r = if (v.isEmergency) 10f * d else 7f * d
+            val r = if (v.isEmergency) 12f * d else 9f * d
             c.drawRoundRect(RectF(-r * 0.7f, -r, r * 0.7f, r), r * 0.35f, r * 0.35f, fill)
             stroke.color = Color.WHITE; stroke.strokeWidth = 1.5f * d
             c.drawRoundRect(RectF(-r * 0.7f, -r, r * 0.7f, r), r * 0.35f, r * 0.35f, stroke)
@@ -454,7 +452,8 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
 
         // V2X status chip, bottom-left of the visible area
         val live = st.v2x.lastFrameMs > 0 && System.currentTimeMillis() - st.v2x.lastFrameMs < 15_000
-        val chip = if (live) "V2X ●  ${st.v2x.vehicles.size}🚗  ${st.v2x.signals.size}🚦  ${st.v2x.hazards.size}⚠"
+        // One chip in every link state (the big V2X card is gone, so the map no longer jumps when data starts)
+        val chip = if (live) "V2X ●  ${st.v2x.vehicles.size}🚗  ${st.v2x.signals.size}🚦  ${st.v2x.hazards.size}⚠  · ${st.v2x.framesLastMinute}/min"
                    else "V2X ○  " + (st.linkHint ?: "")
         textPaint.textSize = 12f * d
         val cw = textPaint.measureText(chip) + 20f * d

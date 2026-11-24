@@ -194,13 +194,15 @@ class NavController(
         requestRoute(from, dest.pos, heading, isReroute = true)
     }
 
+    /** Map options changed (car options screen): redraw with the new settings. */
+    fun optionsChanged() { pushRenderState(); onChanged() }
+
     fun toggleMute() { muted = !muted; CarPrefs.setMuted(ctx, muted); if (muted) tts?.stop(); onChanged() }
 
     // ---- per-fix pipeline --------------------------------------------------------------
 
     private fun onFix(p: LatLon, hdg: Double?, speed: Double, acc: Double) {
         pos = p; heading = hdg ?: heading; speedMps = speed; accuracy = acc
-        renderer.onNewFix(p)
         sharedDest?.let { d -> sharedDest = null; startShared(d) }
         val eng = engine
         val r = route
@@ -208,6 +210,9 @@ class NavController(
             val st = eng.update(p, acc, heading, speed)
             navState = st
             osmLimit = if (st.offRoute) null else speedLimits?.at(st.distAlong)
+            // on the route the arrow sits on the road (like OsmAnd's snap to road); raw fix when off it
+            if (!st.offRoute && st.lateralM < 25.0) renderer.onNewFix(st.snapped, speed, st.routeBearing)
+            else renderer.onNewFix(p, speed, heading)
             if (st.arrived) {
                 say(text.arrived); toast(text.arrived)
                 stopNavigation(); return
@@ -217,7 +222,7 @@ class NavController(
             }
             guidance.onProgress(r, st, speed)?.let { say(it) }
             updateTrip(r, st)
-        }
+        } else renderer.onNewFix(p, speed, if (hdg != null) heading else null)
         updateSpeedLimit(speed)
         refreshV2x()
         pushRenderState()
@@ -241,11 +246,12 @@ class NavController(
         val snap = V2xHub.snapshot()
         val a = V2xAnalyzer.analyze(snap, p, heading, engine)
         ahead = a
+        val near = a.hazards.filter { it.distM <= V2xAnalyzer.alertDistanceM(speedMps) }
         if (navigating || speedMps > 3) {
-            guidance.onHazards(a.hazards)?.let { say(it) }
+            guidance.onHazards(near)?.let { say(it) }
             guidance.onEmergency(a.emergencyNearby, System.currentTimeMillis())?.let { say(it) }
         }
-        a.hazards.firstOrNull { it.hazard.key !in alerted }?.let { alerted += it.hazard.key; onV2xAlert(it) }
+        near.firstOrNull { it.hazard.key !in alerted }?.let { alerted += it.hazard.key; onV2xAlert(it) }
     }
 
     private fun pushRenderState() {
@@ -255,6 +261,7 @@ class NavController(
             v2x = V2xHub.snapshot(), ahead = ahead, navigating = navigating, text = text,
             speedLimitKph = speedLimitKph, speeding = speeding, speedLimitV2x = speedLimitFromV2x, linkHint = linkHint(),
             autoZoom = org.opentrafficmap.receiver.Prefs.autoZoom(ctx),
+            northUp = CarPrefs.northUp(ctx), showVehicles = CarPrefs.showVehicles(ctx),
         )
         renderer.requestFrame()
     }
@@ -265,8 +272,8 @@ class NavController(
             org.opentrafficmap.receiver.BluetoothController.State.SCANNING -> if (de) "ESP32 wird gesucht…" else "Searching ESP32…"
             org.opentrafficmap.receiver.BluetoothController.State.CONNECTING -> if (de) "Verbinde ESP32…" else "Connecting ESP32…"
             org.opentrafficmap.receiver.BluetoothController.State.CONNECTED -> if (de) "ESP32 verbunden, warte auf Daten" else "ESP32 connected, waiting for data"
-            org.opentrafficmap.receiver.BluetoothController.State.ERROR -> if (de) "ESP32-Fehler – V2X verbinden antippen" else "ESP32 error – tap Connect V2X"
-            org.opentrafficmap.receiver.BluetoothController.State.IDLE -> if (de) "„V2X verbinden“ antippen" else "Tap Connect V2X"
+            org.opentrafficmap.receiver.BluetoothController.State.ERROR -> if (de) "ESP32-Fehler – „V2X ○“ antippen" else "ESP32 error – tap “V2X ○”"
+            org.opentrafficmap.receiver.BluetoothController.State.IDLE -> if (de) "nicht verbunden – „V2X ○“ antippen" else "not connected – tap “V2X ○”"
         }
     }
 

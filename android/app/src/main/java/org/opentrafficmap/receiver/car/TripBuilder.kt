@@ -64,6 +64,14 @@ object CarPrefs {
     fun muted(ctx: Context) = p(ctx).getBoolean("muted", false)
     fun setMuted(ctx: Context, m: Boolean) = p(ctx).edit().putBoolean("muted", m).apply()
 
+    /** Car map with north always up (instead of the driving direction). */
+    fun northUp(ctx: Context) = p(ctx).getBoolean("north_up", false)
+    fun setNorthUp(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("north_up", on).apply()
+
+    /** Draw other vehicles (CAM) on the car map. */
+    fun showVehicles(ctx: Context) = p(ctx).getBoolean("show_vehicles", true)
+    fun setShowVehicles(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("show_vehicles", on).apply()
+
     /** Routing server. Defaults to the public FOSSGIS Valhalla; set "valhalla_url" to use your own. */
     fun valhallaUrl(ctx: Context): String = p(ctx).getString("valhalla_url", null) ?: RoutingClient.DEFAULT_VALHALLA
 
