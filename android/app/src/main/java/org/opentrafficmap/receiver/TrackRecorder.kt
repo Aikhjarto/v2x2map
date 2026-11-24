@@ -56,6 +56,9 @@ class TrackRecorder(private val context: Context) {
             if (l.hasBearing()) "%.1f".format(Locale.ROOT, l.bearing) else "",
             if (l.hasAccuracy()) "%.1f".format(Locale.ROOT, l.accuracy) else ""))
         w.newLine()
+        // one line per second: write it through, otherwise the last 8 KB (about 2 minutes of the
+        // drive) stayed in memory until the recording stopped and was lost if the app was killed
+        w.flush()
     }
 
     @Synchronized

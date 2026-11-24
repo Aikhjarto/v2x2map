@@ -71,6 +71,9 @@ class FrameRecorder(private val context: Context) {
         val s = stream ?: return
         try {
             writePcapPacket(s, frame)
+            // flushed per frame (a few per second): if Android kills the app the file is complete
+            // up to the last frame instead of losing up to 8 KB still sitting in the buffer
+            s.flush()
             frameCount++
         } catch (e: Exception) {
             Log.w(tag, "write failed", e)
