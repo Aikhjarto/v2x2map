@@ -13,7 +13,15 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 
-class MarkerLayer(private val map: MapView, private val context: Context) {
+/**
+ * Map markers of received frames. Tapping a marker opens its bubble and reports the frame to
+ * [onFrameTapped] (the frame log jumps to it); [focus] does the opposite for a frame picked in the log.
+ */
+class MarkerLayer(
+    private val map: MapView,
+    private val context: Context,
+    private val onFrameTapped: (Frame) -> Unit = {},
+) {
 
     private data class Entry(val marker: Marker, val createdMs: Long)
 
@@ -28,13 +36,38 @@ class MarkerLayer(private val map: MapView, private val context: Context) {
     private val pathLines    = mutableMapOf<Long, Polyline>()
     private val pathLastSeen = mutableMapOf<Long, Long>()
 
-    fun add(f: Frame) {
-        // A DENM's sender is often a roadside unit far from the event (e.g. at a motorway ramp,
-        // warning of roadworks 5 km on): draw the hazard where the event is.
+    /**
+     * Where a frame is drawn. A DENM's sender is often a roadside unit far from the event (e.g. at a
+     * motorway ramp, warning of roadworks 5 km on): the hazard goes where the event is.
+     */
+    private fun positionOf(f: Frame): GeoPoint? {
         val ev = f.denmEvent
         val evLat = ev?.lat; val evLon = ev?.lon
-        val ll = if (evLat != null && evLon != null) evLat to evLon else f.latLon ?: return
-        val pt = GeoPoint(ll.first, ll.second)
+        val ll = if (evLat != null && evLon != null) evLat to evLon else f.latLon ?: return null
+        return GeoPoint(ll.first, ll.second)
+    }
+
+    private val tapListener = Marker.OnMarkerClickListener { m, _ ->
+        m.showInfoWindow()
+        (m.relatedObject as? Frame)?.let(onFrameTapped)
+        true
+    }
+
+    /**
+     * Shows [f] on the map (frame log → map): centres on its marker and opens the bubble. CAM stations
+     * have one marker that moves, so for a vehicle that is where it was last seen.
+     */
+    fun focus(f: Frame): Boolean {
+        val m = if (f.msgType == ItsG5Decoder.MsgType.CAM && f.stationId != null) camMarkers[f.stationId]
+                else entries.lastOrNull { it.marker.relatedObject === f }?.marker
+        val pt = m?.position ?: positionOf(f) ?: return false
+        map.controller.animateTo(pt)
+        m?.showInfoWindow()
+        return true
+    }
+
+    fun add(f: Frame) {
+        val pt = positionOf(f) ?: return
 
         if (f.msgType == ItsG5Decoder.MsgType.CAM && f.stationId != null) {
             updatePath(f.stationId, pt)
@@ -49,6 +82,8 @@ class MarkerLayer(private val map: MapView, private val context: Context) {
             f.headingDeg?.let { rotation = it.toFloat() }
             title   = buildTitle(f)
             snippet = buildSnippet(f)
+            relatedObject = f
+            setOnMarkerClickListener(tapListener)
         }
         map.overlays.add(m)
         entries.addLast(Entry(m, System.currentTimeMillis()))
@@ -60,9 +95,11 @@ class MarkerLayer(private val map: MapView, private val context: Context) {
         val m = camMarkers.getOrPut(sid) {
             Marker(map).apply {
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                setOnMarkerClickListener(tapListener)
             }.also { map.overlays.add(it) }
         }
         m.position = pt
+        m.relatedObject = f                       // latest frame of the vehicle
         m.icon     = makeCarIcon(f.speedMps, f.headingDeg)
         m.title    = buildTitle(f)
         m.snippet  = buildSnippet(f)

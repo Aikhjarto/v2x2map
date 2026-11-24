@@ -26,8 +26,14 @@ import java.util.Locale
  */
 class FrameLogAdapter(
     private val context: android.content.Context,
-    private val onFrameClick: (Frame) -> Unit = {}
+    private val onFrameClick: (Frame) -> Unit = {},
+    /** A row was tapped: show its frame (a station row: its newest frame) on the map. */
+    private val onShowOnMap: (Frame) -> Unit = {},
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    /** Row picked on the map: drawn highlighted until [clearHighlight]. */
+    private var highlightKey: String? = null
+    private var highlightFrame: Frame? = null
 
     /** Updated by MainActivity on every location fix for distance column. */
     @Volatile var userLocation: Location? = null
@@ -74,6 +80,29 @@ class FrameLogAdapter(
             stations.values.minByOrNull { it.lastSeen }?.key?.let { stations.remove(it) }
         }
         rebuildAndNotify()
+    }
+
+    /**
+     * Map → log: expands the station of [f], highlights it (and [f] itself while it is among the
+     * station's recent frames) and returns the position to scroll to, or -1 if the log does not have it.
+     */
+    fun reveal(f: Frame): Int {
+        val key = stationKey(f)
+        val entry = stations[key] ?: return -1
+        entry.expanded = true
+        highlightKey = key
+        highlightFrame = entry.recentFrames.firstOrNull { it === f }
+        rebuildAndNotify()
+        val stationPos = displayList.indexOfFirst { it === entry }
+        val framePos = highlightFrame?.let { hf -> displayList.indexOfFirst { it === hf } } ?: -1
+        // keep the station row in view above the frame unless the frame is far down its list
+        return if (framePos > stationPos + 3) framePos - 1 else stationPos
+    }
+
+    fun clearHighlight() {
+        if (highlightKey == null && highlightFrame == null) return
+        highlightKey = null; highlightFrame = null
+        notifyDataSetChanged()
     }
 
     fun clear() {
@@ -166,9 +195,11 @@ class FrameLogAdapter(
         // Frame count badge (in summary if no summary text)
         // Already shown inline via buildSummary
 
+        vh.itemView.background = if (entry.key == highlightKey) highlightBg() else vh.defaultBg
         vh.itemView.setOnClickListener {
             entry.expanded = !entry.expanded
             rebuildAndNotify()
+            if (entry.expanded) entry.recentFrames.firstOrNull()?.let(onShowOnMap)
         }
     }
 
@@ -220,8 +251,9 @@ class FrameLogAdapter(
     // ── expanded frame row ───────────────────────────────────────────────────
 
     private fun bindFrame(vh: FrameVH, frame: Frame) {
-        vh.itemView.setBackgroundColor(0x0A000000)   // faint tint to visually indent
-        vh.itemView.setOnClickListener { onFrameClick(frame) }
+        if (frame === highlightFrame) vh.itemView.background = highlightBg()
+        else vh.itemView.setBackgroundColor(0x0A000000)   // faint tint to visually indent
+        vh.itemView.setOnClickListener { onShowOnMap(frame); onFrameClick(frame) }
         vh.time.text = if (frame.receivedMs > 0) timeFmt.format(Date(frame.receivedMs)) else "--:--:--"
         vh.len.text  = frame.len.toString()
         vh.hex.text  = frame.hexPreview()
@@ -235,7 +267,10 @@ class FrameLogAdapter(
 
     // ── ViewHolder classes ───────────────────────────────────────────────────
 
+    private fun highlightBg() = android.graphics.drawable.ColorDrawable(0x553D8BFD)
+
     class StationVH(v: View) : RecyclerView.ViewHolder(v) {
+        val defaultBg: android.graphics.drawable.Drawable? = v.background
         val icon:    ImageView = v.findViewById(R.id.stationIcon)
         val title:   TextView  = v.findViewById(R.id.stationTitle)
         val summary: TextView  = v.findViewById(R.id.stationSummary)

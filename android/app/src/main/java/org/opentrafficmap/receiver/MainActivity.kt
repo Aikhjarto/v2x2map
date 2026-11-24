@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity() {
             val loc = result.lastLocation ?: return
             lastSpeedMps = if (loc.hasSpeed()) loc.speed else 0f
             lastLocation = loc
-            if (followEnabled) followLocation(loc)
+            if (followEnabled && !followPaused) followLocation(loc)
             if (ownTrackEnabled && ::binding.isInitialized)
                 runOnUiThread { addOwnTrackPoint(GeoPoint(loc.latitude, loc.longitude)) }
             if (::binding.isInitialized) {
@@ -153,7 +153,7 @@ class MainActivity : AppCompatActivity() {
         followEnabled   = Prefs.followEnabled(this)
         ownTrackEnabled = Prefs.ownTrackEnabled(this)
         compassMode     = Prefs.compassMode(this)
-        markers = MarkerLayer(binding.map, this)
+        markers = MarkerLayer(binding.map, this) { f -> revealInLog(f) }
         geiger  = GeigerCounter(this)
         if (Prefs.audioFeedback(this)) geiger.start()
 
@@ -169,7 +169,8 @@ class MainActivity : AppCompatActivity() {
         locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(this), binding.map)
         binding.map.overlays.add(locationOverlay)
 
-        adapter = FrameLogAdapter(this) { f -> FrameDetailSheet.show(this, f) }
+        adapter = FrameLogAdapter(this, onFrameClick = { f -> FrameDetailSheet.show(this, f) },
+            onShowOnMap = { f -> showOnMap(f) })
         binding.log.layoutManager = LinearLayoutManager(this)
         binding.log.adapter = adapter
 
@@ -182,6 +183,7 @@ class MainActivity : AppCompatActivity() {
         defaultBtnTintObd = binding.btnObd.backgroundTintList
         binding.btnObd.setOnClickListener { openAndrObd() }
         binding.fabLocate.setOnClickListener { onLocateClick() }
+        pauseFollowOnPan()
         binding.fabLayers.setOnClickListener { showLayerPicker() }
         binding.fabCompass.setOnClickListener { toggleCompassMode() }
         binding.logCollapseBtn.setOnClickListener { toggleLogPanel() }
@@ -310,6 +312,48 @@ class MainActivity : AppCompatActivity() {
         binding.emptyLog.visibility  = View.VISIBLE
         binding.spatLight.visibility = View.GONE
         binding.map.invalidate()
+    }
+
+    // ------------------------------------------ Map ⇄ frame log
+
+    /**
+     * Following the own position pauses when the map is moved by hand or jumps to an object from the
+     * frame log (otherwise the next GPS fix pulls it back at once, also standing still); the locate
+     * button resumes it.
+     */
+    private var followPaused = false
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun pauseFollowOnPan() {
+        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        var downX = 0f; var downY = 0f
+        binding.map.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y }
+                android.view.MotionEvent.ACTION_MOVE ->
+                    if (Math.hypot((e.x - downX).toDouble(), (e.y - downY).toDouble()) > slop) followPaused = true
+            }
+            false                                   // the map still handles the gesture
+        }
+    }
+    private val clearLogHighlight = Runnable { adapter.clearHighlight() }
+
+    /** Marker tapped on the map: open the log at that sender and highlight the frame. */
+    private fun revealInLog(f: Frame, retry: Boolean = true) {
+        if (!logExpanded) toggleLogPanel()
+        val pos = adapter.reveal(f)
+        if (pos < 0) {   // the frame may still wait in the 300 ms log batch
+            if (retry) mainHandler.postDelayed({ revealInLog(f, retry = false) }, LOG_REFRESH_MS + 50)
+            return
+        }
+        (binding.log.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(pos, 0)
+        mainHandler.removeCallbacks(clearLogHighlight)
+        mainHandler.postDelayed(clearLogHighlight, 4_000)
+    }
+
+    /** Row tapped in the log: centre the map on its object (and keep it there for a moment). */
+    private fun showOnMap(f: Frame) {
+        if (::markers.isInitialized && markers.focus(f)) followPaused = true
     }
 
     // ------------------------------------------ Log panel collapse
@@ -571,6 +615,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun centreOnMyLocation() {
+        followPaused = false                        // locate button: follow again
         if (!locationOverlay.isMyLocationEnabled) locationOverlay.enableMyLocation()
         val now = locationOverlay.myLocation
         if (now != null) {
