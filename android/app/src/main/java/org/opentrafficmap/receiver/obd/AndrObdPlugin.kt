@@ -47,10 +47,15 @@ object AndrObdPlugin {
     /** PluginInfo.FEATURE_DATA (1 << 2): the host sends DATALIST and DATA to this plugin. */
     private const val FEATURE_DATA = 1 shl 2
 
-    /** Answer to AndrOBD's IDENTIFY request. Addressed to the requesting host's package only. */
+    /**
+     * Answer to AndrOBD's IDENTIFY request: an unaddressed broadcast, like AndrOBD's own plugins send it
+     * (AndrOBD receives it with a receiver registered at runtime). Not addressed to the PACKAGE of the
+     * request: AndrOBD puts its plugin library's name there ("com.fr3ts0n.androbd.plugin.mgr"), not the
+     * app's, so an addressed answer reached nobody and V2X2MAP never appeared in AndrOBD's plugin list.
+     */
+    @Suppress("UNUSED_PARAMETER")
     fun identifyResponse(ctx: Context, request: Intent): Intent = Intent(IDENTIFY).apply {
         addCategory(CATEGORY_RESPONSE)
-        request.getStringExtra(F_PACKAGE)?.takeIf { it.isNotBlank() }?.let { setPackage(it) }
         putExtra(F_NAME, "V2X2MAP")
         putExtra(F_CLASS, AndrObdPluginService::class.java.name)
         putExtra(F_PACKAGE, ctx.packageName)
