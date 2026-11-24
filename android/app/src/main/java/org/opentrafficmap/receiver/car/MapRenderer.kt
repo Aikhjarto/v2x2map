@@ -321,22 +321,34 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
     }
 
     private fun drawV2x(c: Canvas, st: RenderState, toScreen: (LatLon) -> PointF, onScreen: (PointF) -> Boolean, d: Float) {
-        // vehicles (CAM), unless switched off in the car's map options
+        // vehicles (CAM), unless switched off in the car's map options: an arrow in the driving
+        // direction (a dot without heading), about as large as the own arrow so it is seen at a glance
         for (v in if (st.showVehicles) st.v2x.vehicles else emptyList()) {
             val p = toScreen(v.pos); if (!onScreen(p)) continue
-            c.save(); c.translate(p.x, p.y)
-            v.headingDeg?.let { c.rotate((it - camBearing).toFloat()) }
             fill.color = when {
                 v.isEmergency -> if ((SystemClock.uptimeMillis() / 400) % 2 == 0L) 0xFFE53935.toInt() else 0xFF1E88E5.toInt()
                 v.stationType == 6 || v.stationType == 11 -> 0xFF8E24AA.toInt()   // bus / tram
                 v.stationType in 7..8 -> 0xFF6D4C41.toInt()                         // trucks
                 else -> 0xFF00897B.toInt()
             }
-            val r = if (v.isEmergency) 12f * d else 9f * d
-            c.drawRoundRect(RectF(-r * 0.7f, -r, r * 0.7f, r), r * 0.35f, r * 0.35f, fill)
-            stroke.color = Color.WHITE; stroke.strokeWidth = 1.5f * d
-            c.drawRoundRect(RectF(-r * 0.7f, -r, r * 0.7f, r), r * 0.35f, r * 0.35f, stroke)
+            // fade out over the last 20 s of the 30 s lifetime when no CAM arrives any more
+            val age = System.currentTimeMillis() - v.lastSeenMs
+            fill.alpha = (255 * (1.0 - ((age - 10_000).coerceAtLeast(0) / 20_000.0)).coerceIn(0.35, 1.0)).toInt()
+            val k = if (v.isEmergency) 1.3f else 1.0f
+            stroke.color = Color.WHITE; stroke.strokeWidth = 2f * d; stroke.alpha = fill.alpha
+            c.save(); c.translate(p.x, p.y)
+            val h = v.headingDeg
+            if (h == null) {
+                c.drawCircle(0f, 0f, 9f * d * k, fill); c.drawCircle(0f, 0f, 9f * d * k, stroke)
+            } else {
+                c.rotate((h - camBearing).toFloat())
+                val arrow = Path().apply {
+                    moveTo(0f, -14f * d * k); lineTo(10f * d * k, 11f * d * k); lineTo(0f, 6f * d * k); lineTo(-10f * d * k, 11f * d * k); close()
+                }
+                c.drawPath(arrow, fill); c.drawPath(arrow, stroke)
+            }
             c.restore()
+            fill.alpha = 255; stroke.alpha = 255
         }
         // signals (SPATEM)
         for (sg in st.v2x.signals) {
