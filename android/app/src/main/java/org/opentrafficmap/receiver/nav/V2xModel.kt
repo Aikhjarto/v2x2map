@@ -122,6 +122,14 @@ object V2xAnalyzer {
         } ?: nearest
     }
 
+    /**
+     * Distance up to which a hazard ahead raises the pop-up and the first voice warning: about
+     * 90 s of driving, 800 m to 2.5 km. (The route lookahead is 5 km; warning that far ahead
+     * felt like a false alarm, e.g. roadworks 4.7 km down the motorway right at the on-ramp.)
+     * The banner on the map still shows hazards on the route up to [HAZARD_LOOKAHEAD_M].
+     */
+    fun alertDistanceM(speedMps: Double): Double = (speedMps * 90.0).coerceIn(800.0, 2_500.0)
+
     /** Extra sideways distance a turning lane needs to lose against the straight-on lane. */
     const val LANE_PREFERENCE_M = 1.5
 

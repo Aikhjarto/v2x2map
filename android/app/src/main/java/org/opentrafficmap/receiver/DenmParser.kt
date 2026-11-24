@@ -112,15 +112,16 @@ object DenmParser {
 
         if (sitPresent == 0) return ev(null)
 
-        // SituationContainer preamble (extensible v1.3.x): ext_bit + 3 optional flags
+        // SituationContainer ::= SEQUENCE { informationQuality, eventType, linkedCause OPT, eventHistory OPT, ... }
+        // preamble: ext bit + 2 optional flags; informationQuality is mandatory.
         b.bit()                        // extension bit
-        val infoQPres  = b.bit()
         b.bit()                        // linkedCause present
         b.bit()                        // eventHistory present
+        b.bits(3)                      // informationQuality INT(0..7)
 
-        // informationQuality OPTIONAL: INT(0..7) = 3 bits
-        if (infoQPres == 1) b.bits(3)
-
+        // eventType CauseCode ::= SEQUENCE { causeCode, subCauseCode, ... }: ext bit, then 8 + 8 bits.
+        // (Reading informationQuality as optional and missing this bit turned roadworks 3/0 into 128/96.)
+        b.bit()
         val causeCode    = b.bits(8)
         val subCauseCode = b.bits(8)
         return ev(Cause(causeCode, subCauseCode))

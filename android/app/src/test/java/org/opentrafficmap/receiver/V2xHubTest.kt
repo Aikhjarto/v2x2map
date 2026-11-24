@@ -13,8 +13,9 @@ fun denm(term: Boolean, lat: Double, lon: Double, cause: Int): ByteArray {
   b.w(Math.round(lat*1e7)+900000000L,31); b.w(Math.round(lon*1e7)+1800000000L,32); b.w(0,36+20+4)
   b.w(300,17)                                        // validity 300 s
   b.w(5,8)                                           // stationType
-  b.w(0,1); b.w(0,1); b.w(0,1); b.w(0,1)             // situation preamble
-  b.w(cause.toLong(),8); b.w(0,8)
+  b.w(0,1); b.w(0,1); b.w(1,1)                      // situation: ext, linkedCause, eventHistory (present)
+  b.w(6,3)                                           // informationQuality
+  b.w(0,1); b.w(cause.toLong(),8); b.w(0,8)          // CauseCode: ext, cause, subCause
   return byteArrayOf(0x07,(0xD2).toByte(),0,0, 2, 1, 0,0,0,1) + b.bytes()
 }
 class V2xHubTest {

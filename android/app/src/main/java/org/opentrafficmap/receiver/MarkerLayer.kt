@@ -29,7 +29,11 @@ class MarkerLayer(private val map: MapView, private val context: Context) {
     private val pathLastSeen = mutableMapOf<Long, Long>()
 
     fun add(f: Frame) {
-        val ll = f.latLon ?: return
+        // A DENM's sender is often a roadside unit far from the event (e.g. at a motorway ramp,
+        // warning of roadworks 5 km on): draw the hazard where the event is.
+        val ev = f.denmEvent
+        val evLat = ev?.lat; val evLon = ev?.lon
+        val ll = if (evLat != null && evLon != null) evLat to evLon else f.latLon ?: return
         val pt = GeoPoint(ll.first, ll.second)
 
         if (f.msgType == ItsG5Decoder.MsgType.CAM && f.stationId != null) {
@@ -173,13 +177,16 @@ class MarkerLayer(private val map: MapView, private val context: Context) {
 
     private fun buildTitle(f: Frame): String {
         val sid = f.stationId?.let { "#%08x".format(it.toInt()) } ?: ""
-        return if (sid.isEmpty()) "${f.msgType.short} frame #${f.seq}"
-               else "${f.msgType.short} $sid"
+        val cause = f.denmEvent?.cause?.let { " · ${it.label()}" } ?: ""
+        return if (sid.isEmpty()) "${f.msgType.short} frame #${f.seq}$cause"
+               else "${f.msgType.short} $sid$cause"
     }
 
     private fun buildSnippet(f: Frame): String {
         val (lat, lon) = f.latLon ?: return "len=${f.len}"
         val sb = StringBuilder()
+        val ev = f.denmEvent
+        if (ev?.lat != null && ev.lon != null) sb.append("event lat=%.6f  lon=%.6f\nsender ".format(ev.lat, ev.lon))
         sb.append("lat=%.6f  lon=%.6f\n".format(lat, lon))
         f.speedMps?.takeIf { it > 0.5 }?.let { sb.append("speed=%.1f km/h\n".format(it * 3.6)) }
         f.headingDeg?.let { sb.append("hdg=%.0f°\n".format(it)) }

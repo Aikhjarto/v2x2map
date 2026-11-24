@@ -56,4 +56,16 @@ class ItsDecoderTest {
         assertTrue(text, text.contains("latitude: 482000000 (48.2000000°)"))
         assertTrue(text, text.contains("stationType: "))
     }
+
+    /** The quick DENM parser (live path, frame list) must read the same cause and position as the full decoder. */
+    @Test fun quickDenmParserMatchesFullDecoder() {
+        val denm = vectors.getValue("DENM")
+        val json = AsnJson.toJson(UperDecoder(AsnSchema.load("denm", open("denm"))).decode("DENM", denm.first))
+        fun num(key: String) = Regex("\"$key\":\\s*(-?\\d+)").find(json)!!.groupValues[1].toLong()
+        val ev = DenmParser.extractEvent(byteArrayOf(0x07, 0xd2.toByte(), 0, 0) + denm.first, 0)!!
+        assertEquals(num("causeCode").toInt(), ev.cause!!.causeCode)
+        assertEquals(num("subCauseCode").toInt(), ev.cause!!.subCauseCode)
+        assertEquals(num("latitude") / 1e7, ev.lat!!, 1e-9)
+        assertEquals(num("sequenceNumber").toInt(), ev.sequenceNumber)
+    }
 }

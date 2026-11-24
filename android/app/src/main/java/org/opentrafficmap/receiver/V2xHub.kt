@@ -21,6 +21,7 @@ object V2xHub {
     fun interface Listener { fun onV2xChanged() }
 
     private const val VEHICLE_TTL_MS = 30_000L
+    private const val RSU_STATION_TYPE = 15
     private const val SIGNAL_TTL_MS = 30_000L
     private const val MAX_HAZARD_TTL_MS = 30 * 60_000L
     private const val SPEED_ZONE_TTL_MS = 10 * 60_000L
@@ -64,7 +65,8 @@ object V2xHub {
 
             val ll = f.latLon?.let { LatLon(it.first, it.second) }
             when (f.msgType) {
-                ItsG5Decoder.MsgType.CAM -> if (ll != null && f.stationId != null) {
+                // roadside units (station type 15) also send CAMs; they are not vehicles
+                ItsG5Decoder.MsgType.CAM -> if (ll != null && f.stationId != null && f.stationType != RSU_STATION_TYPE) {
                     vehicles[f.stationId] = V2xVehicle(f.stationId, ll, f.headingDeg, f.speedMps, f.stationType, now)
                 }
                 ItsG5Decoder.MsgType.DENM -> {
