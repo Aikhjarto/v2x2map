@@ -145,5 +145,21 @@
             android:foregroundServiceType="location"
             android:exported="false"
             tools:targetApi="29"/>
+        <!-- AndrOBD plugin (car data from the OBD adapter, logged for now): AndrOBD finds plugins by
+             this IDENTIFY broadcast and then sends the values to the service with explicit intents. -->
+        <receiver
+            android:name=".obd.AndrObdPluginReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.fr3ts0n.androbd.plugin.IDENTIFY" />
+                <category android:name="com.fr3ts0n.androbd.plugin.REQUEST" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".obd.AndrObdPluginService"
+            android:exported="true"
+            android:enabled="true" />
+
     </application>
 </manifest>
