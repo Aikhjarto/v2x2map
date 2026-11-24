@@ -3,8 +3,13 @@
 Read-only probing of a car through an ELM327 adapter (Bluetooth RFCOMM or serial device).
 
 Built to check what V2X2MAP could get from the car besides standard OBD values (speed for a
-green-light speed advisory, steering angle, turn signals). Everything sent and received is logged
-to ~/v2x2map-recordings/obd/ (contains the VIN — keep it out of the repository).
+green-light speed advisory, steering angle, turn signals). Saved automatically to
+~/v2x2map-recordings/obd/ (contains the VIN — keep it out of the repository): elm-<what>-<time>.txt with
+the printed results and elm-<what>-<time>.log with every byte sent and received, both written as they happen.
+
+Runs on a Linux computer that talks to the ELM327 directly — no phone app (AndrOBD) in between; the adapter
+takes only one connection, so close AndrOBD first. Pair once with `bluetoothctl` (scan on, pair <MAC>,
+PIN usually 1234 or 0000), then pass the MAC with --bt.
 
 SAFETY: only reading requests leave this script. Every command goes through `check_allowed()`:
   AT commands from a fixed list (adapter settings only), OBD modes 01/02/03/07/09/0A (read),
@@ -337,16 +342,47 @@ def main():
     a = p.parse_args()
 
     os.makedirs(a.logdir, exist_ok=True)
-    logname = os.path.join(a.logdir, f"elm-{a.what}-{datetime.datetime.now():%Y%m%d-%H%M%S}.log")
-    with open(logname, "w") as log:
-        elm = Elm(bt=a.bt, channel=a.channel, dev=a.dev, log=log)
-        setup(elm)
-        {"info": cmd_info, "ecus": cmd_ecus, "monitor": cmd_monitor, "dids": cmd_dids,
-         "watch": cmd_watch, "raw": cmd_raw}[a.what](elm, a)
-        if a.what in ("dids", "watch") and a.extended:
-            elm.cmd("1001")                           # back to the default session
-    print("log:", logname)
+    stem = os.path.join(a.logdir, f"elm-{a.what}-{datetime.datetime.now():%Y%m%d-%H%M%S}")
+    # Autosave: the raw adapter traffic goes to .log, everything printed (the results) also to .txt,
+    # both flushed line by line, so nothing is lost on Ctrl+C, a dropped Bluetooth link or a crash.
+    with open(stem + ".log", "w") as log, open(stem + ".txt", "w") as out:
+        sys.stdout = Tee(sys.__stdout__, out)
+        print("saving to:", stem + ".txt", "and", stem + ".log")
+        print("command:", " ".join(sys.argv[1:]))
+        elm = None
+        try:
+            elm = Elm(bt=a.bt, channel=a.channel, dev=a.dev, log=log)
+            setup(elm)
+            {"info": cmd_info, "ecus": cmd_ecus, "monitor": cmd_monitor, "dids": cmd_dids,
+             "watch": cmd_watch, "raw": cmd_raw}[a.what](elm, a)
+        except KeyboardInterrupt:
+            print("stopped (Ctrl+C)")
+        except Exception as e:
+            print(f"ERROR: {type(e).__name__}: {e}")
+            return 1
+        finally:
+            if elm and a.what in ("dids", "watch") and a.extended:
+                try:
+                    elm.cmd("1001")                   # back to the default session
+                except Exception:
+                    pass
+            print("saved:", stem + ".txt")
+            sys.stdout = sys.__stdout__
+    return 0
 
+
+class Tee:
+    """Writes to the terminal and to the results file, flushing every write."""
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, s):
+        for st in self.streams:
+            st.write(s); st.flush()
+
+    def flush(self):
+        for st in self.streams:
+            st.flush()
 
 if __name__ == "__main__":
     sys.exit(main())
