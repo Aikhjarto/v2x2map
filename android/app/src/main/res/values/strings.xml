@@ -9,6 +9,10 @@
     <string name="disconnect">USB ✕</string>
     <string name="connect_bt">BT</string>
     <string name="disconnect_bt">BT ✕</string>
+    <string name="obd_none">OBD</string>
+    <string name="obd_waiting">OBD: no data</string>
+    <string name="obd_live">OBD %1$.0f/s</string>
+    <string name="obd_androbd_missing">AndrOBD is not installed</string>
     <string name="mqtt_off">MQTT</string>
     <string name="mqtt_on">MQTT (on)</string>
     <string name="mqtt_broker_hint">mqtts://broker:port</string>

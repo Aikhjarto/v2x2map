@@ -55,6 +55,19 @@
             android:maxLines="1"
             android:ellipsize="end"/>
 
+        <!-- Car data from AndrOBD: grey = not in contact, orange = no values, green = values arrive. Opens AndrOBD. -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnObd"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.7"
+            android:layout_marginStart="6dp"
+            android:text="@string/obd_none"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end"/>
+
     </LinearLayout>
 
     <!-- Guideline — controls map/log split; changed programmatically to collapse log -->

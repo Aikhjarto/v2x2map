@@ -34,6 +34,8 @@ data class RenderState(
     val northUp: Boolean = false,
     /** Car option: draw other vehicles (CAM). */
     val showVehicles: Boolean = true,
+    /** Car data from AndrOBD (OBD chip next to the V2X chip; hidden until AndrOBD made contact). */
+    val obd: org.opentrafficmap.receiver.obd.AndrObdStatus.Snapshot? = null,
 )
 
 /**
@@ -455,15 +457,29 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         // One chip in every link state (the big V2X card is gone, so the map no longer jumps when data starts)
         val chip = if (live) "V2X ●  ${st.v2x.vehicles.size}🚗  ${st.v2x.signals.size}🚦  ${st.v2x.hazards.size}⚠  · ${st.v2x.framesLastMinute}/min"
                    else "V2X ○  " + (st.linkHint ?: "")
-        textPaint.textSize = 12f * d
-        val cw = textPaint.measureText(chip) + 20f * d
-        val chipBox = RectF(area.left + margin, area.bottom - margin - 28f * d, area.left + margin + cw, area.bottom - margin)
-        fill.color = if (dark) 0xDD303134.toInt() else 0xEEFFFFFF.toInt()
-        c.drawRoundRect(chipBox, 14f * d, 14f * d, fill)
-        textPaint.color = if (live) 0xFF00C853.toInt() else if (dark) 0xFFBDBDBD.toInt() else 0xFF616161.toInt()
-        c.drawText(chip, chipBox.centerX(), chipBox.centerY() + 4f * d, textPaint)
+        val chipBox = drawChip(c, chip, live, area.left + margin, area.bottom - margin, d, dark)
+
+        // OBD chip (AndrOBD), same look, right of the V2X chip
+        st.obd?.takeIf { it.state != org.opentrafficmap.receiver.obd.AndrObdStatus.State.NONE }?.let { o ->
+            val de = st.text.german
+            val obdLive = o.state == org.opentrafficmap.receiver.obd.AndrObdStatus.State.LIVE
+            val label = if (obdLive) "OBD ●  " + (if (de) "${o.values} Werte · " else "${o.values} values · ") + "%.0f/s".format(o.perSecond)
+                        else "OBD ○  " + (if (de) "AndrOBD: keine Daten" else "AndrOBD: no data")
+            drawChip(c, label, obdLive, chipBox.right + margin * 0.6f, area.bottom - margin, d, dark)
+        }
 
         st.speedLimitKph?.let { drawSpeedLimit(c, it, st, area.left + margin, chipBox.top - margin, d) }
+    }
+
+    /** Status chip with its lower-left corner at ([left], [bottom]); green text while [live]. Returns its box. */
+    private fun drawChip(c: Canvas, text: String, live: Boolean, left: Float, bottom: Float, d: Float, dark: Boolean): RectF {
+        textPaint.textSize = 12f * d
+        val box = RectF(left, bottom - 28f * d, left + textPaint.measureText(text) + 20f * d, bottom)
+        fill.color = if (dark) 0xDD303134.toInt() else 0xEEFFFFFF.toInt()
+        c.drawRoundRect(box, 14f * d, 14f * d, fill)
+        textPaint.color = if (live) 0xFF00C853.toInt() else if (dark) 0xFFBDBDBD.toInt() else 0xFF616161.toInt()
+        c.drawText(text, box.centerX(), box.centerY() + 4f * d, textPaint)
+        return box
     }
 
     /**

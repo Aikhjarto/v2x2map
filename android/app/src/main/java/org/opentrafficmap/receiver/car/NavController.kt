@@ -294,6 +294,7 @@ class NavController(
             speedLimitKph = speedLimitKph, speeding = speeding, speedLimitV2x = speedLimitFromV2x, linkHint = linkHint(),
             autoZoom = org.opentrafficmap.receiver.Prefs.autoZoom(ctx),
             northUp = CarPrefs.northUp(ctx), showVehicles = CarPrefs.showVehicles(ctx),
+            obd = org.opentrafficmap.receiver.obd.AndrObdStatus.snapshot(),
         )
         renderer.requestFrame()
     }

@@ -38,6 +38,8 @@
     <queries>
         <intent><action android:name="net.osmand.aidl.OsmandAidlServiceV2"/></intent>
         <intent><action android:name="net.osmand.aidl.REQUEST_PERMISSIONS"/></intent>
+        <!-- AndrOBD: the OBD button opens it -->
+        <package android:name="com.fr3ts0n.ecu.gui.androbd"/>
     </queries>
 
     <uses-feature android:name="android.hardware.usb.host" android:required="false"/>

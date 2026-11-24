@@ -77,6 +77,7 @@ class AndrObdPluginReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.action != AndrObdPlugin.IDENTIFY) return
         Log.i(AndrObdPlugin.TAG, "identify from ${AndrObdPlugin.hostInfo(intent)}")
+        AndrObdStatus.onContact()
         AndrObdLog.get(ctx).note("identify request: ${AndrObdPlugin.hostInfo(intent)}")
         ctx.sendBroadcast(AndrObdPlugin.identifyResponse(ctx, intent))
     }
@@ -88,6 +89,7 @@ class AndrObdPluginReceiver : BroadcastReceiver() {
  */
 class AndrObdPluginService : Service() {
     override fun onBind(intent: Intent?): IBinder? {
+        AndrObdStatus.onContact()
         AndrObdLog.get(this).note("bound by AndrOBD (${intent?.action})")
         return null
     }
@@ -96,8 +98,8 @@ class AndrObdPluginService : Service() {
         val log = AndrObdLog.get(this)
         when (intent?.action) {
             AndrObdPlugin.DATA -> AndrObdPlugin.parseData(intent.getStringExtra(AndrObdPlugin.EXTRA_DATA))
-                ?.let { (k, v) -> log.value(k, v) }
-            AndrObdPlugin.DATALIST -> log.dataList(intent.getStringExtra(AndrObdPlugin.EXTRA_DATA).orEmpty())
+                ?.let { (k, v) -> log.value(k, v); AndrObdStatus.onData(k) }
+            AndrObdPlugin.DATALIST -> { AndrObdStatus.onContact(); log.dataList(intent.getStringExtra(AndrObdPlugin.EXTRA_DATA).orEmpty()) }
             AndrObdPlugin.IDENTIFY -> sendBroadcast(AndrObdPlugin.identifyResponse(this, intent))
             AndrObdPlugin.CONFIGURE, AndrObdPlugin.ACTION -> log.note("${intent.action} (nothing to configure yet)")
         }

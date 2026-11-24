@@ -179,6 +179,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnConnect.setOnClickListener { toggleUsb() }
         binding.btnConnectBt.setOnClickListener { toggleBt() }
+        defaultBtnTintObd = binding.btnObd.backgroundTintList
+        binding.btnObd.setOnClickListener { openAndrObd() }
         binding.fabLocate.setOnClickListener { onLocateClick() }
         binding.fabLayers.setOnClickListener { showLayerPicker() }
         binding.fabCompass.setOnClickListener { toggleCompassMode() }
@@ -514,6 +516,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---------------------------------------------------------- AndrOBD (car data)
+
+    private var defaultBtnTintObd: ColorStateList? = null
+
+    /** Like the USB/BT buttons: grey = AndrOBD not in contact, orange = no values, green = values arrive. */
+    private fun updateObdButton() {
+        val o = org.opentrafficmap.receiver.obd.AndrObdStatus.snapshot()
+        binding.btnObd.text = when (o.state) {
+            org.opentrafficmap.receiver.obd.AndrObdStatus.State.NONE    -> getString(R.string.obd_none)
+            org.opentrafficmap.receiver.obd.AndrObdStatus.State.WAITING -> getString(R.string.obd_waiting)
+            org.opentrafficmap.receiver.obd.AndrObdStatus.State.LIVE    -> getString(R.string.obd_live, o.perSecond)
+        }
+        binding.btnObd.backgroundTintList = when (o.state) {
+            org.opentrafficmap.receiver.obd.AndrObdStatus.State.NONE    -> defaultBtnTintObd
+            org.opentrafficmap.receiver.obd.AndrObdStatus.State.WAITING -> ColorStateList.valueOf(0xFFFF9800.toInt())
+            org.opentrafficmap.receiver.obd.AndrObdStatus.State.LIVE    -> ColorStateList.valueOf(0xFF4CAF50.toInt())
+        }
+    }
+
+    private fun openAndrObd() {
+        val i = packageManager.getLaunchIntentForPackage(ANDROBD_PACKAGE)
+        if (i != null) startActivity(i) else toast(getString(R.string.obd_androbd_missing))
+    }
+
     // ---------------------------------------------------------- Location
 
     private fun onLocateClick() {
@@ -750,6 +776,7 @@ class MainActivity : AppCompatActivity() {
             if (::markers.isInitialized && viewingRecording == null) markers.prune()
             if (::intersections.isInitialized) refreshIntersections()
             lastLocation?.let { updateSpatLight(it) }        // phases change without new GPS fixes
+            updateObdButton()
             mainHandler.postDelayed(this, 1_000)
         }
     }
@@ -758,6 +785,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val OWN_TRACK_MAX  = 2000
+        private const val ANDROBD_PACKAGE = "com.fr3ts0n.ecu.gui.androbd"
         private const val LOG_REFRESH_MS = 300L  // log drain interval
     }
 }
