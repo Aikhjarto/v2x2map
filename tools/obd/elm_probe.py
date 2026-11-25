@@ -109,16 +109,17 @@ class Elm:
         self._log(">>", c)
         self._write((c + "\r").encode())
         buf = b""
-        end = time.time() + timeout
-        while time.time() < end:
+        # `timeout` is how long an answer may take; past it the ELM still gets up to 15 s to finish with its
+        # prompt (e.g. a protocol search), so a late answer never ends up attached to the next command.
+        start = time.time()
+        while b">" not in buf and time.time() < start + max(timeout, 15.0):
             try:
                 chunk = self._read()
             except socket.timeout:
                 chunk = b""
-            if chunk:
-                buf += chunk
-                if b">" in buf:
-                    break
+            buf += chunk
+        if time.time() > start + timeout:
+            self._log("..", f"answer took {time.time() - start:.1f} s")
         text = buf.decode(errors="replace").replace(">", "")
         self._log("<<", text)
         return [l.strip() for l in re.split(r"[\r\n]+", text) if l.strip() and l.strip() != c]
@@ -196,6 +197,13 @@ ID_DIDS = {"F187": "part number", "F189": "software version", "F197": "system na
 def setup(elm, headers=True):
     for c in ("ATZ", "ATE0", "ATL0", "ATS1", "ATH1" if headers else "ATH0", "ATSP0", "ATAT1"):
         elm.cmd(c, timeout=8 if c == "ATZ" else 3)
+    # ATSP0 only searches on the first request. Search once with the broadcast address and then fix the protocol:
+    # otherwise the search starts on a unit request (with a receive filter set, it ends in UNABLE TO CONNECT),
+    # and ATMA before any request listens on nothing.
+    elm.cmd("0100", timeout=10)
+    dpn = "".join(elm.cmd("ATDPN")).lstrip("A")
+    if re.fullmatch(r"[1-9A-C]", dpn):
+        elm.cmd("ATSP" + dpn)
 
 
 def target(elm, req, resp):
