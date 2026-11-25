@@ -55,7 +55,10 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
 
     // Camera
     @Volatile var following = true; private set
+    /** Zoomed or panned by hand: the speed-based zoom stops until [recenter]. */
+    @Volatile var zoomFixed = false; private set
     @Volatile private var userZoomDelta = 0.0
+    private var baseZoom = 16.0     // speed-based zoom, frozen while zoomFixed (render thread)
     @Volatile private var panCenter: LatLon? = null
     private var camBearing = 0.0
     private var camZoom = 16.0
@@ -100,6 +103,7 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
             val z0 = floor(z).toInt()
             val (cx, cy) = world(center, z0)
             panCenter = unworld(cx + wx, cy + wy, z0)
+            fixZoom()
             if (following) { following = false; onFollowChanged?.invoke(false) }
             drawFrame()
         }
@@ -108,14 +112,19 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
     override fun onScale(focusX: Float, focusY: Float, scaleFactor: Float) {
         if (scaleFactor <= 0f) return
         userZoomDelta = (userZoomDelta + log2(scaleFactor.toDouble())).coerceIn(-6.0, 3.0)
+        fixZoom()
         requestFrame()
     }
 
-    fun zoomBy(d: Double) { userZoomDelta = (userZoomDelta + d).coerceIn(-6.0, 3.0); requestFrame() }
+    fun zoomBy(d: Double) { userZoomDelta = (userZoomDelta + d).coerceIn(-6.0, 3.0); fixZoom(); requestFrame() }
+
+    private fun fixZoom() {
+        if (!zoomFixed) { zoomFixed = true; onFollowChanged?.invoke(following) }   // shows the recenter button
+    }
 
     fun recenter() {
-        panCenter = null; userZoomDelta = 0.0
-        if (!following) { following = true; onFollowChanged?.invoke(true) }
+        panCenter = null; userZoomDelta = 0.0; zoomFixed = false
+        following = true; onFollowChanged?.invoke(true)
         requestFrame()
     }
 
@@ -200,8 +209,9 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         // --- camera
         val speed = st?.speedMps ?: 0.0
         // by speed while navigating, and also without a route when the auto-zoom setting is on
-        val autoZoom = if (st?.navigating == true || st?.autoZoom == true) SpeedZoom.zoomFor(speed) else 16.0
-        camZoom += ((autoZoom + userZoomDelta).coerceIn(4.0, 19.0) - camZoom) * 0.15
+        // (zooming or panning by hand fixes it where it was, until recenter)
+        if (!zoomFixed) baseZoom = if (st?.navigating == true || st?.autoZoom == true) SpeedZoom.zoomFor(speed) else 16.0
+        camZoom += ((baseZoom + userZoomDelta).coerceIn(4.0, 19.0) - camZoom) * 0.15
         st?.headingDeg?.let { h -> if (speed > 1.5 || smoothHeading == 0.0) smoothHeading = Geo.normDeg(smoothHeading + Geo.angleDiff(h, smoothHeading) * 0.25) }
         val targetBearing = when {
             st?.northUp == true -> 0.0

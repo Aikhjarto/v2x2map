@@ -131,7 +131,7 @@ class NavScreen(carContext: CarContext) : Screen(carContext) {
     private fun mapActionStrip(): ActionStrip {
         val s = ActionStrip.Builder()
         // first slot: back to the own position while panned, otherwise north-up / driving-direction toggle
-        if (!renderer.following) s.addAction(Action.Builder().setIcon(CarIcons.recenter(carContext))
+        if (!renderer.following || renderer.zoomFixed) s.addAction(Action.Builder().setIcon(CarIcons.recenter(carContext))
             .setOnClickListener { renderer.recenter(); invalidate() }.build())
         else {
             val north = CarPrefs.northUp(carContext)
