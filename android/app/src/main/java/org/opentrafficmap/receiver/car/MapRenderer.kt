@@ -210,10 +210,6 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
 
         // --- camera
         val speed = st?.speedMps ?: 0.0
-        // by speed while navigating, and also without a route when the auto-zoom setting is on
-        // (zooming or panning by hand fixes it where it was, until recenter)
-        if (!zoomFixed) baseZoom = if (st?.navigating == true || st?.autoZoom == true) SpeedZoom.zoomFor(speed) else 16.0
-        camZoom += ((baseZoom + userZoomDelta).coerceIn(4.0, 19.0) - camZoom) * 0.15
         st?.headingDeg?.let { h -> if (speed > 1.5 || smoothHeading == 0.0) smoothHeading = Geo.normDeg(smoothHeading + Geo.angleDiff(h, smoothHeading) * 0.25) }
         val targetBearing = when {
             st?.northUp == true -> 0.0
@@ -225,6 +221,16 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         val vis = if (visible.isEmpty) Rect(0, 0, width, height) else visible
         val fx = vis.exactCenterX()
         val fy = if (following && st?.navigating == true && !st.northUp) vis.top + vis.height() * 0.72f else vis.exactCenterY()
+
+        // zoom: by speed while navigating (and without a route with the auto-zoom setting), closer near a
+        // traffic light whose lanes are known; zooming or panning by hand fixes it where it was, until recenter
+        if (!zoomFixed) {
+            val bySpeed = if (st?.navigating == true || st?.autoZoom == true) SpeedZoom.zoomFor(speed) else 16.0
+            // room for the light: up to the top edge in driving direction, else in any direction from the car
+            val room = if (st?.northUp == true) min(vis.width(), vis.height()) / 2f else fy - vis.top
+            baseZoom = max(bySpeed, laneZoom(st, room - 24f * dens, center.lat) ?: 0.0)
+        }
+        camZoom += ((baseZoom + userZoomDelta).coerceIn(4.0, 19.0) - camZoom) * 0.15
 
         val z0 = floor(camZoom).toInt().coerceIn(3, 19)
         val s = tileScale() * 2.0.pow(camZoom - z0)       // screen px per base-world px
@@ -501,6 +507,15 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         }
 
         st.speedLimitKph?.let { drawSpeedLimit(c, it, st, area.left + margin, chipBox.top - margin, d) }
+    }
+
+    /** Zoom that shows the stop line ahead and its intersection, if it is near and sent lane geometry. */
+    private fun laneZoom(st: RenderState?, availPx: Float, lat: Double): Double? {
+        val sa = st?.ahead?.signal ?: return null
+        if (sa.distM > SpeedZoom.LANE_ZOOM_RANGE_M || availPx <= 0f) return null
+        val key = sa.signal.intersectionKey ?: return null
+        if (st.v2x.intersections.none { it.map.key == key && it.map.lanes.isNotEmpty() }) return null
+        return SpeedZoom.laneZoom(sa.distM, availPx.toDouble(), lat, tileScale())
     }
 
     /** Status chip with its lower-left corner at ([left], [bottom]); green text while [live]. Returns its box. */
