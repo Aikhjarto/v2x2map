@@ -295,6 +295,7 @@ class NavController(
             autoZoom = org.opentrafficmap.receiver.Prefs.autoZoom(ctx),
             northUp = CarPrefs.northUp(ctx), showVehicles = CarPrefs.showVehicles(ctx),
             obd = org.opentrafficmap.receiver.obd.AndrObdStatus.snapshot(),
+            recording = org.opentrafficmap.receiver.Prefs.recordingEnabled(ctx),
         )
         renderer.requestFrame()
     }
