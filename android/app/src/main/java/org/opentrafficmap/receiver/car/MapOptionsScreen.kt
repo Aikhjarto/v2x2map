@@ -1,5 +1,6 @@
 package org.opentrafficmap.receiver.car
 
+import android.content.Intent
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.*
@@ -7,8 +8,10 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import org.opentrafficmap.receiver.BtSession
 import org.opentrafficmap.receiver.Prefs
+import org.opentrafficmap.receiver.R
+import org.opentrafficmap.receiver.obd.AndrObdStatus
 
-/** Options on the car screen (gear button): V2X link, snap to road, north up, other vehicles, auto-zoom. */
+/** Options on the car screen (gear button): V2X link, AndrOBD, snap to road, north up, other vehicles, auto-zoom. */
 class MapOptionsScreen(
     carContext: CarContext,
     private val nav: NavController,
@@ -29,6 +32,7 @@ class MapOptionsScreen(
         val list = ItemList.Builder()
             .addItem(toggleRow(if (de) "V2X-Empfänger (ESP32)" else "V2X receiver (ESP32)", nav.linkHint(),
                 BtSession.isActive) { toggleV2x() })
+            .addItem(androbdRow(de))
             .addItem(toggleRow(if (de) "Auf Straße einrasten" else "Snap to road",
                 if (de) "Pfeil auf die Straße statt auf die GPS-Position (auch Knopf oben)" else "Arrow on the road instead of the raw GPS fix (also the top button)",
                 CarPrefs.roadSnap(carContext)) { CarPrefs.setRoadSnap(carContext, it) })
@@ -49,8 +53,33 @@ class MapOptionsScreen(
             .build()
     }
 
+    /**
+     * Opens AndrOBD on the phone; with its "connect to the last ELM adapter" setting it then connects by
+     * itself. Only while parked (Android Auto rule for opening phone apps). Closing it is not possible:
+     * Android lets no app stop another one, and AndrOBD has no disconnect request for plugins.
+     */
+    private fun androbdRow(de: Boolean): Row {
+        val status = when (AndrObdStatus.snapshot().state) {
+            AndrObdStatus.State.LIVE -> if (de) "Verbunden, Daten kommen an" else "Connected, data arriving"
+            AndrObdStatus.State.WAITING -> if (de) "Keine Daten — AndrOBD nicht mit dem ELM verbunden?" else "No data — AndrOBD not connected to the ELM?"
+            AndrObdStatus.State.NONE -> if (de) "Öffnet AndrOBD am Handy (nur im Stand)" else "Opens AndrOBD on the phone (parked only)"
+        }
+        return Row.Builder().setTitle(if (de) "AndrOBD starten" else "Start AndrOBD").addText(status)
+            .setOnClickListener(ParkedOnlyOnClickListener.create {
+                val i = carContext.packageManager.getLaunchIntentForPackage(ANDROBD_PACKAGE)
+                if (i == null) nav.toast(carContext.getString(R.string.obd_androbd_missing))
+                else {
+                    carContext.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    nav.toast(if (de) "AndrOBD wird am Handy geöffnet" else "Opening AndrOBD on the phone")
+                }
+            })
+            .build()
+    }
+
     private fun toggleRow(title: String, text: String, checked: Boolean, set: (Boolean) -> Unit): Row =
         Row.Builder().setTitle(title).addText(text)
             .setToggle(Toggle.Builder { on -> set(on); nav.optionsChanged(); invalidate() }.setChecked(checked).build())
             .build()
+
+    private companion object { const val ANDROBD_PACKAGE = "com.fr3ts0n.ecu.gui.androbd" }
 }
