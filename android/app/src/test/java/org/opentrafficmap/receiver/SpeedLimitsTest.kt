@@ -56,4 +56,17 @@ class SpeedLimitsTest {
         assertTrue(w.update(137.0, 130))
         assertFalse(w.update(200.0, null))       // unknown limit → never warn
     }
+
+    @Test fun flashesOnlyMoreThanTenPercentOver() {
+        val w = SpeedWarning()
+        w.update(86.0, 80); assertTrue(w.speeding); assertFalse(w.flashing)   // warning from 85
+        w.update(89.0, 80); assertTrue(w.flashing)                              // flashing from 88
+        w.update(87.0, 80); assertTrue(w.flashing)                              // until below 86
+        w.update(85.5, 80); assertTrue(w.speeding); assertFalse(w.flashing)
+        w.update(56.0, 50); assertTrue(w.speeding)                              // 10 % of 50 = 5 km/h:
+        assertTrue(w.flashing)                                                  // same as the warning
+        w.update(140.0, 130); assertTrue(w.speeding); assertFalse(w.flashing)  // flashing from 143
+        w.update(144.0, 130); assertTrue(w.flashing)
+        w.update(144.0, null); assertFalse(w.flashing)
+    }
 }

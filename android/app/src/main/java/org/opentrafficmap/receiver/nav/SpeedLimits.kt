@@ -57,17 +57,22 @@ class SpeedLimits(private val startM: DoubleArray, private val endM: DoubleArray
 /**
  * Speeding warning with hysteresis: on when the speed exceeds the limit by more than the
  * tolerance (5 km/h, or 5 % above 100 km/h), off again once it drops 2 km/h below that.
+ * [flashing] is the stronger level (more than 10 % over, never below the warning), same hysteresis.
  */
 class SpeedWarning {
     var speeding = false; private set
+    var flashing = false; private set
 
     fun update(speedKph: Double, limitKph: Int?): Boolean {
-        speeding = if (limitKph == null) false else {
-            val threshold = limitKph + if (limitKph > 100) limitKph * 0.05 else 5.0
-            if (speeding) speedKph > threshold - 2.0 else speedKph > threshold
-        }
+        if (limitKph == null) { reset(); return false }
+        val threshold = limitKph + if (limitKph > 100) limitKph * 0.05 else 5.0
+        speeding = over(speedKph, threshold, speeding)
+        flashing = speeding && over(speedKph, kotlin.math.max(threshold, limitKph * 1.10), flashing)
         return speeding
     }
 
-    fun reset() { speeding = false }
+    private fun over(speedKph: Double, threshold: Double, on: Boolean) =
+        if (on) speedKph > threshold - 2.0 else speedKph > threshold
+
+    fun reset() { speeding = false; flashing = false }
 }

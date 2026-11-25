@@ -24,6 +24,8 @@ data class RenderState(
     val text: NavText,
     val speedLimitKph: Int? = null,
     val speeding: Boolean = false,
+    /** More than 10 % over the limit: the sign flashes (below that only the speed box shows). */
+    val speedingFlash: Boolean = false,
     /** Limit comes from an IVIM road sign (shown with a small "V2X" label). */
     val speedLimitV2x: Boolean = false,
     /** Phone setting "auto-zoom by speed" (applies without a route; with a route it always zooms). */
@@ -532,12 +534,12 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
 
     /**
      * Round speed-limit sign above the V2X chip ([left], [bottom] = its lower-left corner).
-     * While speeding, the sign flashes red and the current speed is shown next to it.
+     * While speeding, the current speed is shown next to it; more than 10 % over, the sign also flashes red.
      */
     private fun drawSpeedLimit(c: Canvas, limit: Int, st: RenderState, left: Float, bottom: Float, d: Float) {
         val r = 26f * d
         val cx = left + r; val cy = bottom - r
-        val flashOn = st.speeding && (SystemClock.uptimeMillis() / 400) % 2 == 0L
+        val flashOn = st.speedingFlash && (SystemClock.uptimeMillis() / 400) % 2 == 0L
         fill.color = if (flashOn) 0xFFD50000.toInt() else Color.WHITE
         c.drawCircle(cx, cy, r, fill)
         stroke.color = 0xFFD50000.toInt(); stroke.strokeWidth = 0.2f * r
