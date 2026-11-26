@@ -1,6 +1,5 @@
 package org.opentrafficmap.receiver.car
 
-import android.content.Intent
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.*
@@ -9,6 +8,7 @@ import androidx.lifecycle.LifecycleOwner
 import org.opentrafficmap.receiver.BtSession
 import org.opentrafficmap.receiver.Prefs
 import org.opentrafficmap.receiver.R
+import org.opentrafficmap.receiver.obd.AndrObdLauncher
 import org.opentrafficmap.receiver.obd.AndrObdStatus
 
 /** Options on the car screen (gear button): V2X link, AndrOBD, snap to road, north up, other vehicles, auto-zoom. */
@@ -66,12 +66,13 @@ class MapOptionsScreen(
         }
         return Row.Builder().setTitle(if (de) "AndrOBD starten" else "Start AndrOBD").addText(status)
             .setOnClickListener(ParkedOnlyOnClickListener.create {
-                val i = carContext.packageManager.getLaunchIntentForPackage(ANDROBD_PACKAGE)
-                if (i == null) nav.toast(carContext.getString(R.string.obd_androbd_missing))
-                else {
-                    carContext.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    nav.toast(if (de) "AndrOBD wird am Handy geöffnet" else "Opening AndrOBD on the phone")
-                }
+                nav.toast(when (AndrObdLauncher.launch(carContext)) {
+                    AndrObdLauncher.Result.NOT_INSTALLED -> carContext.getString(R.string.obd_androbd_missing)
+                    AndrObdLauncher.Result.STARTED -> if (de) "AndrOBD wird am Handy geöffnet" else "Opening AndrOBD on the phone"
+                    AndrObdLauncher.Result.NOTIFICATION ->
+                        if (de) "Am Handy auf die Benachrichtigung tippen (oder V2X2MAP „Über anderen Apps einblenden“ erlauben)"
+                        else "Tap the notification on the phone (or allow V2X2MAP to display over other apps)"
+                })
             })
             .build()
     }
@@ -80,6 +81,4 @@ class MapOptionsScreen(
         Row.Builder().setTitle(title).addText(text)
             .setToggle(Toggle.Builder { on -> set(on); nav.optionsChanged(); invalidate() }.setChecked(checked).build())
             .build()
-
-    private companion object { const val ANDROBD_PACKAGE = "com.fr3ts0n.ecu.gui.androbd" }
 }

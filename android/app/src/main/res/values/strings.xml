@@ -13,6 +13,9 @@
     <string name="obd_waiting">OBD: no data</string>
     <string name="obd_live">OBD %1$.0f/s</string>
     <string name="obd_androbd_missing">AndrOBD is not installed</string>
+    <string name="obd_start_channel">Start AndrOBD</string>
+    <string name="obd_start_notif_title">Start AndrOBD</string>
+    <string name="obd_start_notif_text">Tap to open AndrOBD (it then connects to the ELM)</string>
     <string name="mqtt_off">MQTT</string>
     <string name="mqtt_on">MQTT (on)</string>
     <string name="mqtt_broker_hint">mqtts://broker:port</string>

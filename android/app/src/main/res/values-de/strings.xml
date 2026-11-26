@@ -13,6 +13,9 @@
     <string name="obd_waiting">OBD: keine Daten</string>
     <string name="obd_live">OBD %1$.0f/s</string>
     <string name="obd_androbd_missing">AndrOBD ist nicht installiert</string>
+    <string name="obd_start_channel">AndrOBD starten</string>
+    <string name="obd_start_notif_title">AndrOBD starten</string>
+    <string name="obd_start_notif_text">Tippen, um AndrOBD zu öffnen (es verbindet sich dann mit dem ELM)</string>
     <string name="mqtt_on">MQTT (aktiv)</string>
     <string name="node_id_hint">Node-ID</string>
 
