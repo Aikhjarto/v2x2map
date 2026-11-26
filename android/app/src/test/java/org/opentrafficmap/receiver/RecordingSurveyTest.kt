@@ -21,6 +21,15 @@ class RecordingSurveyTest {
             println("   unknown by EtherType: " + unknown.groupingBy { it.etherType?.let { e -> "0x%04x".format(e) } ?: "none" }.eachCount())
             println("   unknown by BTP port: " + unknown.groupingBy { ItsG5Decoder.decodeFull(it.payload).btpDstPort }.eachCount())
             unknown.take(5).forEach { println("   unknown len=${it.len} secured=${it.secured} hex=${it.hexPreview(64)}") }
+            // signed (IEEE 1609.2) share per message type, and whether the signer is a certificate or its digest
+            val secDec = org.opentrafficmap.receiver.asn1.ItsFrameDecoder { set -> File("src/main/assets/its_asn1/$set.json").inputStream() }
+            val signers = frames.filter { it.secured == true }.groupingBy { f ->
+                val sec = secDec.decode(f.payload).firstOrNull { it.title.startsWith("Security") }?.value
+                val signer = (sec?.at("content", "signedData", "signer") as? org.opentrafficmap.receiver.asn1.AsnValue.Choice)?.alt ?: "?"
+                "${f.msgType}/$signer"
+            }.eachCount()
+            println("   signed: " + frames.groupBy { it.msgType }.mapValues { (_, l) -> "${l.count { it.secured == true }}/${l.size}" })
+            println("   signer: $signers")
             val noPos = frames.count { it.msgType != ItsG5Decoder.MsgType.UNKNOWN && it.latLon == null }
             println("   classified without position: $noPos")
 
@@ -74,7 +83,7 @@ class RecordingSurveyTest {
                     val d = f.denmEvent
                     val evPos = d?.lat?.let { la -> d.lon?.let { lo -> org.opentrafficmap.receiver.nav.LatLon(la, lo) } }
                     val evDist = evPos?.let { p -> me?.let { "%.0f m".format(org.opentrafficmap.receiver.nav.Geo.distance(it.pos, p)) } } ?: "?"
-                    println("   DENM ${t(e.atMs)} from=${f.stationId} type=${f.stationType} action=${d?.originStationId}:${d?.sequenceNumber} " +
+                    println("   DENM ${t(e.atMs)} signed=${f.secured} from=${f.stationId} type=${f.stationType} action=${d?.originStationId}:${d?.sequenceNumber} " +
                         "cause=${d?.cause?.causeCode}/${d?.cause?.subCauseCode} (${d?.cause?.label()}) validity=${d?.validitySec}s " +
                         "terminated=${d?.terminated} sender=$dist event=$evDist eventPos=${evPos} senderPos=${f.latLon}")
                 }
@@ -94,6 +103,17 @@ class RecordingSurveyTest {
             .distinctBy { it.denmEvent?.let { d -> "${d.originStationId}:${d.sequenceNumber}" } }.forEach { f ->
                 V2xHub.messageDecoder?.invoke(f.payload)?.let { println(org.opentrafficmap.receiver.asn1.AsnFormat.tree(it, "DENM")) }
             }
+        // per intersection: how many SPATEMs carry timing at all (countdown on the car screen needs minEndTime/likelyTime)
+        val spat = ev.mapNotNull { it.frame }.filter { it.msgType == ItsG5Decoder.MsgType.SPATEM }
+            .mapNotNull { f -> V2xHub.messageDecoder?.invoke(f.payload)?.let { org.opentrafficmap.receiver.asn1.AsnFormat.tree(it, "SPATEM") } }
+        spat.groupBy { Regex("""region: (\d+)\s+id: (\d+)""").find(it)?.let { m -> "${m.groupValues[1]}/${m.groupValues[2]}" } ?: "?" }
+            .forEach { (k, l) -> println("   SPATEM intersection $k: ${l.size} msgs, with timing ${l.count { "timing" in it || "minEndTime" in it }}") }
+        // RECORDING_SPATEM_TREE=n: the decoded tree of the first n SPATEMs (timing fields: minEndTime, likelyTime, …)
+        System.getenv("RECORDING_SPATEM_TREE")?.toIntOrNull()?.let { n ->
+            ev.mapNotNull { it.frame }.filter { it.msgType == ItsG5Decoder.MsgType.SPATEM && (System.getenv("RECORDING_SPATEM_ID") ?: "") in (V2xHub.messageDecoder?.invoke(it.payload)?.let { v -> org.opentrafficmap.receiver.asn1.AsnFormat.tree(v, "SPATEM") } ?: "") }.take(n).forEach { f ->
+                V2xHub.messageDecoder?.invoke(f.payload)?.let { println(org.opentrafficmap.receiver.asn1.AsnFormat.tree(it, "SPATEM")) }
+            }
+        }
         cams.forEach { (id, l) -> println("   CAM station $id: ${l.size} msgs"); l.take(3).forEach { println("      $it") }; if (l.size > 3) println("      … ${l.last()}") }
     }
 }
