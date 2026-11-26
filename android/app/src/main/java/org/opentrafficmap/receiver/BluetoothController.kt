@@ -12,6 +12,7 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
@@ -140,7 +141,13 @@ class BluetoothController(
         scanning = true
         onState(State.SCANNING, context.getString(R.string.bt_searching, DEVICE_NAME))
         try {
-            scanner.startScan(null, settingsBuilder.build(), scanCallback)
+            // With filters: Android pauses unfiltered BLE scans while the screen is off (since 8.1), so the
+            // ESP32 was only found once the phone was unlocked. Filters are OR-ed: by name or by service.
+            val filters = listOf(
+                ScanFilter.Builder().setDeviceName(DEVICE_NAME).build(),
+                ScanFilter.Builder().setServiceUuid(android.os.ParcelUuid(SERVICE_UUID)).build(),
+            )
+            scanner.startScan(filters, settingsBuilder.build(), scanCallback)
         } catch (e: SecurityException) {
             onState(State.ERROR, context.getString(R.string.bt_perm_denied)); scanning = false; return
         }
