@@ -94,6 +94,8 @@ dependencies {
 
     // Android Auto (Car App Library) — navigation template + surface map
     implementation("androidx.car.app:app:1.4.0")
+    // car hardware (car GPS, wheel speed, sensors) on Android Auto — see car/CarDataRecorder
+    implementation("androidx.car.app:app-projected:1.4.0")
 
     // OsmAnd add-on: AIDL API of OsmAnd (copied module, see osmand-api/NOTICE.md)
     implementation(project(":osmand-api"))

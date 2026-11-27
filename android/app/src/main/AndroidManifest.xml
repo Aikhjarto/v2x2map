@@ -34,6 +34,10 @@
     <!-- Android Auto navigation -->
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES"/>
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE"/>
+    <!-- car data from the head unit (car/CarDataRecorder): wheel speed, odometer, fuel/range -->
+    <uses-permission android:name="com.google.android.gms.permission.CAR_SPEED"/>
+    <uses-permission android:name="com.google.android.gms.permission.CAR_MILEAGE"/>
+    <uses-permission android:name="com.google.android.gms.permission.CAR_FUEL"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"
                      tools:targetApi="34"/>
 

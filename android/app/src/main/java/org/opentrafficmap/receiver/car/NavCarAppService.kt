@@ -33,11 +33,18 @@ class NavCarAppService : CarAppService() {
 
 class NavSession : Session() {
     private var screen: NavScreen? = null
+    private var carData: CarDataRecorder? = null
 
     init {
         lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
-            override fun onCreate(owner: androidx.lifecycle.LifecycleOwner) { org.opentrafficmap.receiver.CarLink.carScreenActive = true }
-            override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) { org.opentrafficmap.receiver.CarLink.carScreenActive = false }
+            override fun onCreate(owner: androidx.lifecycle.LifecycleOwner) {
+                org.opentrafficmap.receiver.CarLink.carScreenActive = true
+                carData = CarDataRecorder(carContext).also { it.start() }     // always: what does this car deliver?
+            }
+            override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
+                org.opentrafficmap.receiver.CarLink.carScreenActive = false
+                carData?.stop(); carData = null
+            }
         })
     }
 
