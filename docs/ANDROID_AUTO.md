@@ -7,7 +7,7 @@ turn-by-turn guidance, plus the live ITS-G5 picture from your ESP32-C5:
 |---|---|
 | **SPATEM** (traffic lights) | Traffic-light pins on the map, and a large traffic-light card (red/amber/green + distance) for the next signal ahead. If the light sends timing, the card counts down the seconds to the next change |
 | **MAPEM** (intersection lanes) | The lanes of the intersection, each ingress lane in the colour of its signal; the map zooms in on an intersection ahead whose lanes are known |
-| **DENM** (hazards) | Orange warning triangles at the DENM *event position*. A hazard ahead triggers a pop-up alert, a voice warning ("Caution, accident in 800 meters") and, on a route, an **Avoid** button that reroutes around it |
+| **DENM** (hazards) | Orange warning triangles at the DENM *event position*. A hazard ahead triggers a pop-up alert, a voice warning ("Caution, accident in 800 meters") and, on a route, an **Avoid** button that reroutes around it. Pedestrians that a roadside unit reports on the crosswalk of a traffic light are only shown as a small blue walker, without warning: the light stops the cars there |
 | **CAM** (vehicles) | Other vehicles as arrows in their driving direction (buses/trams purple, trucks brown). Emergency vehicles (StationType 10) flash red/blue and trigger a "make way" warning |
 | **IVIM** (road signs) | Speed limits from V2X road signs, shown with a small "V2X" label; they take precedence over OpenStreetMap |
 
@@ -90,8 +90,9 @@ Notes:
    (IVIM, also without a route, labelled "V2X"), otherwise during guidance from OpenStreetMap via
    Valhalla. More than 5 km/h over it (5 % above 100 km/h), your current speed is shown next to the
    sign; more than 10 % over, the sign also flashes red.
-8. **Options (⚙):** V2X receiver, **Start AndrOBD** (opens AndrOBD on the phone, only while
-   parked; needs "Display over other apps" for V2X2MAP, otherwise it posts a notification to tap),
+8. **Options (⚙):** V2X receiver, **Start AndrOBD** (opens AndrOBD's main screen on the phone, also
+   with the phone locked, only while parked; needs "Display over other apps" for V2X2MAP, otherwise it
+   posts a notification to tap),
    snap to road, north up, show vehicles, auto-zoom.
 
 **Recordings** (on the phone in `Android/data/org.opentrafficmap.receiver/files/`):
@@ -102,7 +103,8 @@ Notes:
 * `car-<time>.csv`: whatever the car's head unit delivers through Android Auto (car GPS, wheel
   speed, compass, gyroscope, accelerometer, odometer, fuel level and range, model), with a status per
   value, while the car screen is open. Cars differ in what they send; the file shows which values
-  this car delivers.
+  this car delivers. Speed, odometer and fuel level need the "car information" permissions, which the
+  phone app asks for when it is opened; car GPS and the model need none.
 
 ### Set the destination from the phone
 

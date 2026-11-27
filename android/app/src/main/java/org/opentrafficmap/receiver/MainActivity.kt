@@ -97,11 +97,18 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { startReceiverService() }
 
+    /** Speed, odometer and fuel level from the car through Android Auto (recorded by CarDataRecorder). */
+    private val carDataPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { }
+    private var askedCarData = false
+
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) { centreOnMyLocation(); startLocationUpdates() }
         else toast(getString(R.string.loc_perm_denied))
+        requestCarDataPermissions()
     }
 
     private val locationCallback = object : LocationCallback() {
@@ -216,7 +223,11 @@ class MainActivity : AppCompatActivity() {
         if (!::binding.isInitialized) return
         binding.map.onResume()
         applyKeepScreenOn()
-        if (followEnabled || ownTrackEnabled || compassMode) ensureLocation()
+        val wantsLocation = followEnabled || ownTrackEnabled || compassMode
+        if (wantsLocation) ensureLocation()
+        // not while the location prompt is up (it asks again from its result)
+        if (!wantsLocation || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) requestCarDataPermissions()
     }
 
     override fun onPause() {
@@ -488,6 +499,15 @@ class MainActivity : AppCompatActivity() {
         } else {
             startReceiverService()
         }
+    }
+
+    /** Once per app start; never while another permission prompt is open (a second one would be dropped). */
+    private fun requestCarDataPermissions() {
+        if (askedCarData) return
+        askedCarData = true
+        val missing = org.opentrafficmap.receiver.car.CarDataRecorder.PERMISSIONS
+            .filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) carDataPermissionLauncher.launch(missing.toTypedArray())
     }
 
     private fun startReceiverService() = ReceiverForegroundService.start(this)

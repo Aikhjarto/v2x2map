@@ -133,5 +133,14 @@ class CarDataRecorder(private val carContext: CarContext) {
         else -> "unknown"
     }
 
-    companion object { const val HEADER = "time_ms,kind,status,car_ts_ms,v1,v2,v3,v4" }
+    companion object {
+        const val HEADER = "time_ms,kind,status,car_ts_ms,v1,v2,v3,v4"
+        /**
+         * Runtime ("dangerous") permissions, defined by Google Play services, for speed, odometer and
+         * fuel/battery level. The phone app asks for them; without them those requests fail with a
+         * SecurityException (written as `error` row). Model, car GPS and the sensors need none.
+         */
+        val PERMISSIONS = listOf("com.google.android.gms.permission.CAR_SPEED",
+            "com.google.android.gms.permission.CAR_MILEAGE", "com.google.android.gms.permission.CAR_FUEL")
+    }
 }
