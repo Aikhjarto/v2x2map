@@ -158,3 +158,6 @@ updated too.
 * Android Auto rules: typing only while parked. Google only lets reviewed navigation apps onto the
   Play Store, so this stays a sideloaded or personal build.
 * This is a driver *aid*. V2X reception is partial and unverified; always follow the real signals.
+
+Ideas that were looked into but not started (e.g. lane-level position with RTK corrections) are in
+[FUTURE_WORK.md](FUTURE_WORK.md).
