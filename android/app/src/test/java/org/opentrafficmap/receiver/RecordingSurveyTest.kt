@@ -46,8 +46,20 @@ class RecordingSurveyTest {
             V2xHub.clear()
             try {
                 val t0 = ev.first().atMs; val real0 = System.currentTimeMillis()
-                for (e in ev) { val f = e.frame ?: continue; V2xHub.clock = { real0 + (e.atMs - t0) }; V2xHub.ingest(f, e.recordedAtMs) }
+                val seenMaps = linkedMapOf<Long, org.opentrafficmap.receiver.nav.IntersectionMap>()
+                for (e in ev) { val f = e.frame ?: continue; V2xHub.clock = { real0 + (e.atMs - t0) }; V2xHub.ingest(f, e.recordedAtMs)
+                    if (f.msgType == ItsG5Decoder.MsgType.MAPEM) V2xHub.snapshot().intersections.forEach { seenMaps[it.map.key] = it.map } }
                 val snap = V2xHub.snapshot()
+                // where each intersection is, and how far DENM events lie from its lanes (is a hazard part of a signalised crossing?)
+                val denmPos = frames.mapNotNull { f -> f.denmEvent?.let { d -> val la = d.lat; val lo = d.lon; if (la != null && lo != null) Triple(d.cause?.causeCode, la, lo) else null } }.distinct()
+                seenMaps.values.forEach { m ->
+                    val near = denmPos.map { (c, la, lo) -> val p = org.opentrafficmap.receiver.nav.LatLon(la, lo)
+                        "cause $c: ref ${"%.0f".format(org.opentrafficmap.receiver.nav.Geo.distance(m.ref, p))} m, lanes ${"%.0f".format(
+                            m.lanes.flatMap { it.points }.minOfOrNull { org.opentrafficmap.receiver.nav.Geo.distance(it, p) } ?: -1.0)} m, crosswalks ${"%.0f".format(
+                            m.lanes.filter { it.kind == org.opentrafficmap.receiver.nav.LaneKind.CROSSWALK }.flatMap { it.points }
+                                .minOfOrNull { org.opentrafficmap.receiver.nav.Geo.distance(it, p) } ?: -1.0)} m" }
+                    println("   MAPEM intersection ${org.opentrafficmap.receiver.nav.IntersectionKeys.label(m.key)}: ref=${m.ref} lanes=${m.lanes.size}; DENM events: $near")
+                }
                 if (System.getenv("RECORDING_DETAIL") != null) detail(ev)
                 println("   at the end: ${snap.vehicles.size} vehicles, ${snap.hazards.size} hazards, ${snap.signals.size} lights, " +
                     "${snap.intersections.size} intersections, ${V2xHub.speedZones().size} IVIM speed zones")

@@ -20,6 +20,12 @@ data class V2xHazard(
     val lastSeenMs: Long,
     val expiresMs: Long,
     val simulated: Boolean = false,
+    /**
+     * A pedestrian reported on the crosswalk of a signalised intersection (see
+     * [V2xAnalyzer.atSignalisedCrossing]): the traffic light handles it, so it is drawn on the map but
+     * raises no warning.
+     */
+    val atSignalisedCrossing: Boolean = false,
 ) {
     val isEmergencyApproach: Boolean get() = causeCode == 95
 }
@@ -82,7 +88,7 @@ object V2xAnalyzer {
         bearing: Double?,
         engine: NavigationEngine?,
     ): V2xAhead {
-        val hazards = snap.hazards.mapNotNull { h ->
+        val hazards = snap.hazards.filter { !it.atSignalisedCrossing }.mapNotNull { h ->
             val d = if (engine != null) engine.aheadOnRoute(h.pos, HAZARD_LATERAL_M, HAZARD_LOOKAHEAD_M)?.first
                     else inCone(pos, bearing, h.pos, 2_000.0, 40.0)
             d?.let { HazardAhead(h, it) }
@@ -129,6 +135,33 @@ object V2xAnalyzer {
      * The banner on the map still shows hazards on the route up to [HAZARD_LOOKAHEAD_M].
      */
     fun alertDistanceM(speedMps: Double): Double = (speedMps * 90.0).coerceIn(800.0, 2_500.0)
+
+    /** DENM causeCode humanPresenceOnTheRoad (pedestrians, cyclists on the road). */
+    const val CAUSE_HUMAN_PRESENCE = 12
+    /** A pedestrian DENM this close to a MAPEM crosswalk lane is on that crosswalk. */
+    const val CROSSWALK_MATCH_M = 8.0
+    /** Without crosswalk geometry: this close to a traffic light counts as its crossing. */
+    const val SIGNAL_MATCH_M = 30.0
+
+    /**
+     * True for a pedestrian DENM (causeCode 12) on the crosswalk of a signalised intersection: on a MAPEM
+     * crosswalk lane, or within [SIGNAL_MATCH_M] of a traffic light. Roadside units with pedestrian
+     * detection report every person on such a crossing (seen on the first test drives: the same crossing,
+     * every time someone walked over it). Cars are stopped by the light there, so it is no warning.
+     * A pedestrian anywhere else on the road still is.
+     */
+    fun atSignalisedCrossing(h: V2xHazard, maps: Collection<IntersectionMap>, signals: Collection<V2xSignal>): Boolean {
+        if (h.causeCode != CAUSE_HUMAN_PRESENCE) return false
+        val onCrosswalk = maps.any { m -> m.lanes.any { l ->
+            l.kind == LaneKind.CROSSWALK && distanceToLine(h.pos, l.points) <= CROSSWALK_MATCH_M } }
+        return onCrosswalk || signals.any { Geo.distance(it.pos, h.pos) <= SIGNAL_MATCH_M }
+    }
+
+    private fun distanceToLine(p: LatLon, points: List<LatLon>): Double = when (points.size) {
+        0 -> Double.MAX_VALUE
+        1 -> Geo.distance(p, points[0])
+        else -> points.zipWithNext().minOf { (a, b) -> Geo.projectOnSegment(p, a, b).second }
+    }
 
     /** Extra sideways distance a turning lane needs to lose against the straight-on lane. */
     const val LANE_PREFERENCE_M = 1.5

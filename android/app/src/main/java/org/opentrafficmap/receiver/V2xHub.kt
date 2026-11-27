@@ -144,8 +144,10 @@ object V2xHub {
                 })
             }
             val views = maps.values.map { IntersectionView(it, spats[it.key]?.spat?.groups.orEmpty()) }
-            return V2xSnapshot(vehicles.values.toList(), hazards.values.toList(), signals.values.toList() + derived,
-                lastFrameMs, frameTimes.size, views)
+            val allSignals = signals.values.toList() + derived
+            val hz = hazards.values.map { h ->
+                if (V2xAnalyzer.atSignalisedCrossing(h, maps.values, allSignals)) h.copy(atSignalisedCrossing = true) else h }
+            return V2xSnapshot(vehicles.values.toList(), hz, allSignals, lastFrameMs, frameTimes.size, views)
         }
     }
 

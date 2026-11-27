@@ -379,7 +379,7 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         val aheadKeys = st.ahead?.hazards?.associate { it.hazard.key to it.distM } ?: emptyMap()
         for (h in st.v2x.hazards) {
             val p = toScreen(h.pos); if (!onScreen(p)) continue
-            drawHazard(c, p.x, p.y, d, h.key in aheadKeys)
+            if (h.atSignalisedCrossing) drawPedestrian(c, p.x, p.y, d) else drawHazard(c, p.x, p.y, d, h.key in aheadKeys)
         }
     }
 
@@ -424,6 +424,19 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         stroke.color = Color.WHITE; stroke.strokeWidth = 2f * d; c.drawPath(tri, stroke)
         textPaint.color = Color.BLACK; textPaint.textSize = sz * 1.1f
         c.drawText("!", x, y + sz * 0.6f, textPaint)
+    }
+
+    /** Pedestrian on a signalised crosswalk: information only, small and blue like a crossing sign. */
+    private fun drawPedestrian(c: Canvas, x: Float, y: Float, d: Float) {
+        val r = 9f * d
+        fill.color = 0xFF1565C0.toInt(); c.drawCircle(x, y, r, fill)
+        stroke.color = Color.WHITE; stroke.strokeWidth = 1.5f * d; c.drawCircle(x, y, r, stroke)
+        stroke.strokeWidth = 1.6f * d                                    // stick figure walking
+        c.drawCircle(x + 0.5f * d, y - 5f * d, 1.6f * d, stroke)
+        c.drawLine(x, y - 2.5f * d, x - 0.5f * d, y + 2f * d, stroke)       // body
+        c.drawLine(x - 0.5f * d, y + 2f * d, x - 3.5f * d, y + 6f * d, stroke)
+        c.drawLine(x - 0.5f * d, y + 2f * d, x + 3f * d, y + 6f * d, stroke)
+        c.drawLine(x - 3.5f * d, y - 0.5f * d, x + 3.5f * d, y - 1f * d, stroke)  // arms
     }
 
     private fun drawSignalPin(c: Canvas, x: Float, y: Float, phase: SignalPhase, d: Float) {
@@ -487,7 +500,7 @@ class MapRenderer(private val carContext: CarContext) : SurfaceCallback {
         // V2X status chip, bottom-left of the visible area
         val live = st.v2x.lastFrameMs > 0 && System.currentTimeMillis() - st.v2x.lastFrameMs < 15_000
         // One chip in every link state (the big V2X card is gone, so the map no longer jumps when data starts)
-        val chip = if (live) "V2X ●  ${st.v2x.vehicles.size}🚗  ${st.v2x.signals.size}🚦  ${st.v2x.hazards.size}⚠  · ${st.v2x.framesLastMinute}/min"
+        val chip = if (live) "V2X ●  ${st.v2x.vehicles.size}🚗  ${st.v2x.signals.size}🚦  ${st.v2x.hazards.count { !it.atSignalisedCrossing }}⚠  · ${st.v2x.framesLastMinute}/min"
                    else "V2X ○  " + (st.linkHint ?: "")
         var chipBox = drawChip(c, chip, live, area.left + margin, area.bottom - margin, d, dark)
         val rowRight = { b: RectF -> b.right + margin * 0.6f }
