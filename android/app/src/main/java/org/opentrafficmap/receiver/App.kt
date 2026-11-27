@@ -6,6 +6,7 @@ import androidx.appcompat.app.AppCompatDelegate
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        FramePipeline.init(this)              // recording must work without the phone screen ever opening
         // IVIM speed limits and SPATEM timing: decoded with the generated ASN.1 tables.
         val decoder = org.opentrafficmap.receiver.asn1.ItsFrameDecoder { set -> assets.open("its_asn1/$set.json") }
         V2xHub.messageDecoder = { payload -> decoder.decode(payload).lastOrNull()?.value }

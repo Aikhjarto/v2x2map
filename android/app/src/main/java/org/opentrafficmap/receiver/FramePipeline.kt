@@ -38,7 +38,11 @@ object FramePipeline {
     val isRecording: Boolean get() = recorderRef?.isRecording == true
     val mqttRunning: Boolean get() = mqttBridges.isNotEmpty()
 
-    private fun init(ctx: Context) { if (app == null) app = ctx.applicationContext }
+    /**
+     * Called from [App.onCreate]: the persistent recording setting needs the context in [onFrames]. Before, only
+     * the phone screen set it, so a drive with only the car screen (or AndrOBD) starting the app went unrecorded.
+     */
+    fun init(ctx: Context) { if (app == null) app = ctx.applicationContext }
 
     // ---- UI ---------------------------------------------------------------------------
 
