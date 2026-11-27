@@ -5,9 +5,11 @@ turn-by-turn guidance, plus the live ITS-G5 picture from your ESP32-C5:
 
 | V2X message | What you see in the car |
 |---|---|
-| **SPATEM** (traffic lights) | Traffic-light pins on the map, and a large traffic-light card (red/amber/green + distance) for the next signal **on your route** |
-| **DENM** (hazards) | Orange warning triangles at the DENM *event position*. A hazard on your route triggers a pop-up alert, a voice warning ("Caution, accident in 800 meters") and an **Avoid** button that reroutes around it |
-| **CAM** (vehicles) | Live vehicles (buses/trams purple, trucks brown). Emergency vehicles (StationType 10) flash red/blue and trigger a "make way" warning |
+| **SPATEM** (traffic lights) | Traffic-light pins on the map, and a large traffic-light card (red/amber/green + distance) for the next signal ahead. If the light sends timing, the card counts down the seconds to the next change |
+| **MAPEM** (intersection lanes) | The lanes of the intersection, each ingress lane in the colour of its signal; the map zooms in on an intersection ahead whose lanes are known |
+| **DENM** (hazards) | Orange warning triangles at the DENM *event position*. A hazard ahead triggers a pop-up alert, a voice warning ("Caution, accident in 800 meters") and, on a route, an **Avoid** button that reroutes around it |
+| **CAM** (vehicles) | Other vehicles as arrows in their driving direction (buses/trams purple, trucks brown). Emergency vehicles (StationType 10) flash red/blue and trigger a "make way" warning |
+| **IVIM** (road signs) | Speed limits from V2X road signs, shown with a small "V2X" label; they take precedence over OpenStreetMap |
 
 Routing is done by the open-source Valhalla server run by FOSSGIS (the one openstreetmap.org uses).
 Search uses Photon. The map uses the OpenStreetMap standard tiles, darkened at night. All three are free and
@@ -67,23 +69,40 @@ Notes:
 
 ## 3. Use it in the car
 
-1. On the phone, open V2X2MAP and connect the ESP32-C5 **via Bluetooth**. If your car uses
-   *wired* Android Auto, the phone's USB port is taken by the car, so USB-OTG to the ESP32 won't
-   work at the same time. Power the ESP32 from a car USB port or a power bank instead.
-2. Leave the phone app running in the background (don't swipe it away). It owns the BLE connection
-   and feeds the car screen.
-3. On the car screen, open V2X2MAP. The card at the top shows the live V2X status
-   (`V2X live · 120/min · 14 vehicles · 2 signals · 0 hazards`).
+1. Power the ESP32-C5 in the car (car USB port or power bank). If your car uses *wired* Android
+   Auto, the phone's USB port is taken by the car, so the ESP32 is connected **via Bluetooth**.
+2. On the car screen, open V2X2MAP. It connects to the ESP32 by itself (also with the phone locked
+   in a pocket); the phone app does not need to be opened. ⚙ → **V2X receiver (ESP32)** switches
+   the connection off and on.
+3. **Status chips** (bottom left): `V2X ● 3🚗 2🚦 0⚠ · 120/min` while V2X arrives (otherwise the
+   link state), `OBD ●` while AndrOBD delivers car data, and an orange **REC off** while frame
+   recording is switched off on the phone.
 4. **Search** → type a destination (Android Auto only allows typing while parked) or pick a recent
    one. **By voice:** with V2X2MAP open, press the microphone and say "Navigate to …". The
    Assistant hands the request to V2X2MAP (tested with Gemini on Android Auto 18). If another
    navigation app is open, the request goes there instead.
 5. During guidance: **Exit** stops navigation, **Avoid** (shown when a hazard is on your route)
    reroutes around it, and the speaker icon mutes voice guidance.
-6. **Speed limit:** during guidance a round sign (bottom left) shows the posted limit at your
-   position. More than 5 km/h over it (5 % above 100 km/h), the sign flashes red and your current
-   speed is shown next to it. The limits come from OpenStreetMap via Valhalla (one extra request
-   per route); roads without a tagged limit, and unlimited motorway sections, show no sign.
+6. **Map:** it zooms by speed (always with a route, without one if *Auto-zoom by speed* is on) and
+   closer near a traffic light whose lanes are known. Zooming or panning by hand fixes the scale and
+   stops following; the **recenter** button brings both back.
+7. **Speed limit:** a round sign (bottom left) shows the limit at your position: from V2X road signs
+   (IVIM, also without a route, labelled "V2X"), otherwise during guidance from OpenStreetMap via
+   Valhalla. More than 5 km/h over it (5 % above 100 km/h), your current speed is shown next to the
+   sign; more than 10 % over, the sign also flashes red.
+8. **Options (⚙):** V2X receiver, **Start AndrOBD** (opens AndrOBD on the phone, only while
+   parked; needs "Display over other apps" for V2X2MAP, otherwise it posts a notification to tap),
+   snap to road, north up, show vehicles, auto-zoom.
+
+**Recordings** (on the phone in `Android/data/org.opentrafficmap.receiver/files/`):
+* `itsg5-<time>.pcap` with `-track.csv` (own GPS): while *recording* is switched on in the phone
+  app. A file starts with the first V2X frame and is closed when the drive is over (10 minutes
+  without V2X, car screen and movement).
+* `androbd-<time>.csv`: everything AndrOBD sends to the V2X2MAP plugin.
+* `car-<time>.csv`: whatever the car's head unit delivers through Android Auto (car GPS, wheel
+  speed, compass, gyroscope, accelerometer, odometer, fuel level and range, model), with a status per
+  value, while the car screen is open. Cars differ in what they send; the file shows which values
+  this car delivers.
 
 ### Set the destination from the phone
 
@@ -120,37 +139,41 @@ Unit tests for the routing/guidance/V2X logic: `./gradlew test`.
 ## How it's built
 
 ```
-ESP32-C5 ──BLE/USB──► MainActivity.handleFrames ──► V2xHub (process-wide live store)
-                                                        │
+ESP32-C5 ──BLE/USB──► BtSession ──► FramePipeline ──► V2xHub (process-wide live store)
+                                        │  └─► FrameRecorder (pcap + own track), MQTT
+                                        └─► MainActivity (phone UI, if open)
 Android Auto ◄── NavScreen (NavigationTemplate) ◄── NavController ──► Valhalla / Photon
                     │                                   │
-                    └─ MapRenderer (draws on car surface: tiles, route, V2X, HUD)
+                    └─ MapRenderer (draws on car surface: tiles, route, lanes, V2X, HUD, chips)
 ```
 
-New files:
-
-* `V2xHub.kt`: thread-safe store of vehicles, hazards and signals, with expiry. DENM cancellations remove the hazard.
-* `nav/`: pure Kotlin, no Android dependencies, unit-tested. Geometry, polyline decoding, Valhalla/Photon client, map matching and progress (`NavigationEngine`), V2X-on-route analysis (`V2xAnalyzer`), voice prompt timing (`GuidanceScheduler`), German/English text.
-* `car/`: Android Auto. `NavCarAppService` / `NavSession` / `NavScreen` / `SearchScreen`, `MapRenderer` (surface drawing), `TileCache`, `CarIcons` (turn arrows), `TripBuilder` (cluster/HUD trip info), `NavForegroundService` (keeps GPS alive during guidance).
-
-Changed files (small): `DenmParser.kt` now also extracts the event position, ActionID, validity and
-cancellation flag. `ItsG5Decoder.kt`, `Frame.kt` and `FrameReader.kt` carry that through.
-`MainActivity.kt` gets one line (`V2xHub.ingest(f)`). The manifest and `build.gradle.kts` are
-updated too.
+* `V2xHub.kt`: thread-safe store of vehicles, hazards, signals, intersections (MAPEM + SPATEM) and
+  IVIM speed zones, with expiry. DENM cancellations remove the hazard.
+* `asn1/`: generated ASN.1 tables and UPER/OER decoders for all ITS messages and the IEEE 1609.2
+  security envelope; `SpatemParser` reads the signal states and timing.
+* `nav/`: pure Kotlin, no Android dependencies, unit-tested. Geometry, polyline decoding,
+  Valhalla/Photon client, map matching and progress (`NavigationEngine`), V2X-ahead analysis
+  (`V2xAnalyzer`), intersections and lanes, speed zoom, speed warning, voice prompt timing, texts.
+* `car/`: Android Auto. `NavCarAppService` / `NavSession` / `NavScreen` / `SearchScreen` /
+  `MapOptionsScreen`, `MapRenderer` (surface drawing), `TileCache`, `CarIcons`, `TripBuilder`
+  (cluster/HUD trip info), `CarDataRecorder` (car hardware data), `NavForegroundService` (keeps GPS
+  alive during guidance).
+* `obd/`: AndrOBD plugin (car data from an ELM327 adapter) and the launcher for AndrOBD.
 
 ## Known limitations (read before trusting it)
 
-* **Speed limits are OSM data, not sign recognition.** Temporary limits (roadworks, variable
-  motorway signs, school zones by time) are missing, and some roads have no limit tagged. Shown
-  only during guidance and while on the route.
-
-* **Which signal phase?** The existing `SpatTemParser` reports the phase of the *first* signal
-  group of the intersection. That is not necessarily your lane or direction. Matching your lane
-  needs MAPEM lane geometry (not implemented yet), so treat the light card as a hint, not as truth.
-  The same caution applies to the phone app's traffic-light indicator.
-* **No countdown / green-light speed advice** yet: the SPATEM parser doesn't decode timing.
-* **Secured (IEEE 1609.2-signed) DENMs/SPATEMs** are only decoded where the existing parser
-  manages it. Many deployments sign messages, so you may see markers without cause codes.
+* **Speed limits:** V2X road signs (IVIM) only where a roadside unit sends them; otherwise
+  OpenStreetMap, and that only during guidance and while on the route. OSM misses temporary limits
+  (roadworks, variable motorway signs, school zones by time), and some roads have no limit tagged.
+* **Which signal applies?** The light ahead is chosen by direction of travel: MAPEM lane geometry
+  gives each signal group its approach direction. Phone GPS (2–5 m) cannot tell which *lane* you
+  are in, so with several signal groups for one approach (left/straight/right) the light card is a
+  hint, not the truth. Lane-level position is in [FUTURE_WORK.md](FUTURE_WORK.md).
+* **Countdown only where the light sends timing.** Many traffic lights send only the current state
+  (on the first real drives, 4 of 5 intersections sent no timing). No green-light speed advice yet.
+* **Signatures are decoded, not verified.** The IEEE 1609.2 / ETSI TS 103 097 envelope (signer,
+  certificate) is decoded and shown in the frame details, but the signature is not checked against
+  the EU C-ITS trust list, so a forged or test message looks the same as a real one.
 * **Roundabout icons assume right-hand traffic** (fine for Austria/Germany).
 * **Online routing only.** No offline routing; rerouting needs data coverage.
 * The free FOSSGIS Valhalla and Photon servers are for light personal use. For heavier use, run
