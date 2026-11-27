@@ -25,7 +25,11 @@ object AndrObdLauncher {
     enum class Result { NOT_INSTALLED, STARTED, NOTIFICATION }
 
     fun launch(ctx: Context): Result {
-        val intent = ctx.packageManager.getLaunchIntentForPackage(PACKAGE)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // CLEAR_TOP|SINGLE_TOP: back to AndrOBD's main screen (it holds the OBD connection). Without it, Android
+        // restores the screen last open in AndrOBD's task; AndrOBD 2.7.10 crashes when that is the chart view
+        // and its process was gone (seen 2026-11-27: "Start AndrOBD" did nothing visible).
+        val intent = ctx.packageManager.getLaunchIntentForPackage(PACKAGE)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+            or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             ?: return Result.NOT_INSTALLED
         if (Settings.canDrawOverlays(ctx)) {
             try { ctx.startActivity(intent); return Result.STARTED } catch (_: Exception) { /* fall back below */ }
