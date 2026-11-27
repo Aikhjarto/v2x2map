@@ -26,6 +26,9 @@ class TrackRecorder(private val context: Context) {
     private var out: BufferedWriter? = null
     private var thread: HandlerThread? = null
     var file: File? = null; private set
+    /** Last time the phone moved (faster than 1.5 m/s, or more than 50 m from where it last stood). */
+    @Volatile var lastMovingMs = 0L; private set
+    private var anchor: Location? = null
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(r: LocationResult) { r.locations.forEach(::write) }
@@ -39,6 +42,7 @@ class TrackRecorder(private val context: Context) {
         try {
             out = f.bufferedWriter().also { it.write(HEADER); it.newLine() }
             file = f
+            lastMovingMs = System.currentTimeMillis(); anchor = null
             val t = HandlerThread("track-recorder").apply { start() }
             thread = t
             val req = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L).setMinUpdateIntervalMillis(500L).build()
@@ -51,6 +55,8 @@ class TrackRecorder(private val context: Context) {
     @Synchronized
     private fun write(l: Location) {
         val w = out ?: return
+        val a = anchor
+        if (a == null || (l.hasSpeed() && l.speed > 1.5f) || l.distanceTo(a) > 50f) { lastMovingMs = System.currentTimeMillis(); anchor = l }
         w.write(String.format(Locale.ROOT, "%d,%.7f,%.7f,%s,%s,%s", l.time, l.latitude, l.longitude,
             if (l.hasSpeed()) "%.2f".format(Locale.ROOT, l.speed) else "",
             if (l.hasBearing()) "%.1f".format(Locale.ROOT, l.bearing) else "",

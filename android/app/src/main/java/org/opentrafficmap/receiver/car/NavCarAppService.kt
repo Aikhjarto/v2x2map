@@ -34,6 +34,13 @@ class NavCarAppService : CarAppService() {
 class NavSession : Session() {
     private var screen: NavScreen? = null
 
+    init {
+        lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onCreate(owner: androidx.lifecycle.LifecycleOwner) { org.opentrafficmap.receiver.CarLink.carScreenActive = true }
+            override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) { org.opentrafficmap.receiver.CarLink.carScreenActive = false }
+        })
+    }
+
     override fun onCreateScreen(intent: Intent): Screen {
         // osmdroid config is needed for reading the phone app's offline tile cache
         try {

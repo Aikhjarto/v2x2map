@@ -28,6 +28,21 @@ class FrameRecorder(private val context: Context) {
 
     val isRecording: Boolean get() = stream != null
     private val track = TrackRecorder(context)
+    @Volatile private var lastFrameMs = 0L
+
+    // Closes the file (and with it the GPS track) once the drive is over: no V2X, no car screen and no
+    // movement for IDLE_MS. Recording stays switched on; the next received frame starts a new file.
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val idleCheck = object : Runnable {
+        override fun run() {
+            if (!isRecording) return
+            val now = System.currentTimeMillis()
+            if (now - lastFrameMs > IDLE_MS && !CarLink.carScreenActive && now - track.lastMovingMs > IDLE_MS) {
+                Log.i(tag, "drive over (no V2X, no car screen, not moving for ${IDLE_MS / 60_000} min): closing")
+                stop()
+            } else main.postDelayed(this, IDLE_CHECK_MS)
+        }
+    }
 
     @Synchronized
     fun start(): File? {
@@ -44,6 +59,8 @@ class FrameRecorder(private val context: Context) {
             file = f
             frameCount = 0
             track.start(f)                                   // own GPS track next to it, for replays
+            lastFrameMs = System.currentTimeMillis()
+            main.removeCallbacks(idleCheck); main.postDelayed(idleCheck, IDLE_CHECK_MS)
             Log.i(tag, "recording to ${f.absolutePath}")
             f
         } catch (e: Exception) {
@@ -55,6 +72,7 @@ class FrameRecorder(private val context: Context) {
     @Synchronized
     fun stop(): File? {
         val s = stream ?: return null
+        main.removeCallbacks(idleCheck)
         track.stop()
         return try {
             s.flush(); s.close()
@@ -75,6 +93,7 @@ class FrameRecorder(private val context: Context) {
             // up to the last frame instead of losing up to 8 KB still sitting in the buffer
             s.flush()
             frameCount++
+            lastFrameMs = System.currentTimeMillis()
         } catch (e: Exception) {
             Log.w(tag, "write failed", e)
             stop()
@@ -112,6 +131,8 @@ class FrameRecorder(private val context: Context) {
     }
 
     companion object {
+        private const val IDLE_MS = 10 * 60_000L
+        private const val IDLE_CHECK_MS = 60_000L
         // 0xa1b2c3d4 stored LE → bytes d4 c3 b2 a1 → Wireshark recognises native-endian pcap
         private val PCAP_MAGIC     = 0xa1b2c3d4.toInt()
         private const val LINK_IEEE80211 = 105
